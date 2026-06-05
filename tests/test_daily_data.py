@@ -6,7 +6,7 @@ test_daily_data.py — daily_data 模組單元測試
 import os
 import pytest
 import pandas as pd
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from daily_data import fetch_candles
 
 
@@ -74,4 +74,12 @@ def test_fetch_candles_raises_on_empty_data():
         instance.stock.historical.candles.return_value = {"data": []}
 
         with pytest.raises(RuntimeError, match="無法取得"):
+            fetch_candles("3312", days=60)
+
+
+def test_fetch_candles_raises_on_missing_api_key():
+    """未設定 FUGLE_API_KEY 時應立即 raise RuntimeError，不進入網路呼叫"""
+    with patch.dict(os.environ, {}, clear=True):
+        os.environ.pop("FUGLE_API_KEY", None)
+        with pytest.raises(RuntimeError, match="FUGLE_API_KEY"):
             fetch_candles("3312", days=60)
