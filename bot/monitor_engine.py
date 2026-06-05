@@ -6,9 +6,23 @@ monitor_engine.py — 背景監控引擎
 import threading
 import time
 import os
+import datetime
 import requests
 
 POLL_INTERVAL_SEC = 30
+
+# 台股交易時段（UTC+8）：週一到週五 09:00–13:30
+_MARKET_OPEN  = datetime.time(9, 0)
+_MARKET_CLOSE = datetime.time(13, 30)
+_TZ_OFFSET    = datetime.timezone(datetime.timedelta(hours=8))
+
+
+def is_trading_hours() -> bool:
+    """判斷現在是否為台股交易時段（週一到週五 09:00–13:30 UTC+8）"""
+    now = datetime.datetime.now(_TZ_OFFSET)
+    if now.weekday() >= 5:  # 週六=5, 週日=6
+        return False
+    return _MARKET_OPEN <= now.time() <= _MARKET_CLOSE
 
 
 def fetch_price(stock_id: str):
@@ -55,12 +69,13 @@ class MonitorEngine:
         print("[monitor] 背景監控引擎已停止")
 
     def _loop(self):
-        """主迴圈：每 POLL_INTERVAL_SEC 秒執行一次掃描，每 0.5 秒檢查是否應停止"""
+        """主迴圈：每 POLL_INTERVAL_SEC 秒執行一次掃描，非交易時段跳過查詢"""
         while self._running:
-            try:
-                self._scan_all()
-            except Exception as e:
-                print(f"[monitor] 掃描異常：{e}")
+            if is_trading_hours():
+                try:
+                    self._scan_all()
+                except Exception as e:
+                    print(f"[monitor] 掃描異常：{e}")
             for _ in range(POLL_INTERVAL_SEC * 2):  # 以 0.5 秒為步距，快速響應 stop()
                 if not self._running:
                     break
