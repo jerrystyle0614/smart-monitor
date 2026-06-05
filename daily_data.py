@@ -25,13 +25,17 @@ def fetch_candles(symbol: str, days: int = 60) -> pd.DataFrame:
     Raises:
         RuntimeError: API Key 未設定、或無法取得資料
     """
+    # 早期防守：未設定 API Key 時立即拋出，不進入網路呼叫
+    api_key = os.environ.get("FUGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "未設定 FUGLE_API_KEY 環境變數。請先申請富果 API 金鑰。"
+        )
+
     end_date = date.today().isoformat()
     start_date = (date.today() - timedelta(days=days)).isoformat()
 
     try:
-        # 從環境變數讀取 API Key，傳入 RestClient；
-        # 未設定時 api_key 為 None，真實 RestClient 會在 HTTP 請求時拋出認證錯誤
-        api_key = os.environ.get("FUGLE_API_KEY")
         client = RestClient(api_key=api_key)
         resp = client.stock.historical.candles(
             symbol=symbol,
