@@ -13,9 +13,8 @@ import datetime
 from enum import Enum
 
 from daily_data import fetch_candles
-from notifier import DiscordNotifier, COLOR_INFO, COLOR_GREEN, COLOR_YELLOW, COLOR_RED
+from notifier import DiscordNotifier, COLOR_INFO, COLOR_YELLOW, COLOR_RED
 from swing_strategy import analyze_swing, SwingResult
-from strategy import Alert
 
 
 class Mode(Enum):
@@ -52,7 +51,7 @@ def _format_premarket(stock_name: str, stock_id: str, result: SwingResult) -> tu
     return title, message
 
 
-def _format_postmarket(stock_name: str, stock_id: str, result: SwingResult, prev_close: float) -> tuple[str, str]:
+def _format_postmarket(stock_name: str, stock_id: str, result: SwingResult, prev_close: float, ma_warn: float) -> tuple[str, str]:
     """回傳盤後分析的 (title, message)"""
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     title = f"📊 盤後分析｜{now_str}"
@@ -61,9 +60,9 @@ def _format_postmarket(stock_name: str, stock_id: str, result: SwingResult, prev
     pct_change = round((result.close - prev_close) / prev_close * 100, 2) if prev_close else 0.0
 
     # 依距均線位置給出明日操作建議
-    if result.pct_from_ma20 >= 2.0:
+    if result.pct_from_ma20 >= ma_warn:
         tomorrow = f"續抱，若跌破 {result.ma20:.2f} 考慮減碼"
-    elif 0 <= result.pct_from_ma20 < 2.0:
+    elif 0 <= result.pct_from_ma20 < ma_warn:
         tomorrow = f"留意：明日若跌破 {result.ma20:.2f} 元（MA20）建議減碼"
     else:
         tomorrow = f"警示：已跌破 MA20（{result.ma20:.2f} 元），評估出場"
@@ -121,7 +120,7 @@ def run_analysis(config: dict, notifier: DiscordNotifier, mode: Mode) -> None:
         title, message = _format_premarket(stock_name, stock_id, result)
         summary_color = COLOR_INFO
     else:
-        title, message = _format_postmarket(stock_name, stock_id, result, prev_close)
+        title, message = _format_postmarket(stock_name, stock_id, result, prev_close, ma_warn=config["swing_ma_warn_pct"])
         summary_color = COLOR_INFO
 
     # 終端機輸出摘要
