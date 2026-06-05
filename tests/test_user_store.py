@@ -98,14 +98,12 @@ def test_get_all_monitoring_users(tmp_path):
 
 def test_alert_fired_default_false(tmp_path):
     store = UserStore(str(tmp_path))
-    store.set_state("u1", "MONITORING")
     assert store.get_alert_fired("u1", "stop") is False
     assert store.get_alert_fired("u1", "target1") is False
 
 
 def test_set_alert_fired(tmp_path):
     store = UserStore(str(tmp_path))
-    store.set_state("u1", "MONITORING")
     store.set_alert_fired("u1", "stop", True)
     assert store.get_alert_fired("u1", "stop") is True
     assert store.get_alert_fired("u1", "target1") is False
@@ -113,7 +111,8 @@ def test_set_alert_fired(tmp_path):
 
 def test_reset_alerts_on_config_change(tmp_path):
     store = UserStore(str(tmp_path))
-    store.set_state("u1", "MONITORING")
     store.set_alert_fired("u1", "stop", True)
+    store.set_alert_fired("u1", "target1", True)
     store.reset_alerts("u1")
     assert store.get_alert_fired("u1", "stop") is False
+    assert store.get_alert_fired("u1", "target1") is False
