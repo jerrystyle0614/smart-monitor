@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from notifier import COLOR_INFO, COLOR_YELLOW, COLOR_RED
+from notifier import COLOR_YELLOW, COLOR_RED
 from strategy import Alert
 
 
@@ -48,9 +48,10 @@ def analyze_swing(
         ValueError: 資料筆數不足 ma_days
     """
     # 資料筆數不足時提早拋錯，避免計算出無意義的均線
-    if len(df) < ma_days:
+    min_required = max(ma_days, lookback)
+    if len(df) < min_required:
         raise ValueError(
-            f"資料不足：需要至少 {ma_days} 筆，目前只有 {len(df)} 筆"
+            f"資料不足：需要至少 {min_required} 筆，目前只有 {len(df)} 筆"
         )
 
     close_latest = float(df["close"].iloc[-1])
