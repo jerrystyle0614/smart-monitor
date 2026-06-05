@@ -76,7 +76,9 @@ def parse_monitor_intent(text: str) -> dict:
         )
         # 取出回應文字，去除首尾空白後解析為 JSON
         raw = response.content[0].text.strip()
-        return json.loads(raw)
-    except (json.JSONDecodeError, Exception):
+        result = json.loads(raw)
+        # 確保只回傳已知的欄位，防止 Claude 加入多餘的鍵值污染下遊邏輯
+        return {k: result.get(k) for k in _NULL_RESULT}
+    except Exception:
         # 任何例外（網路錯誤、JSON 解析失敗等）一律回傳全 null，不讓主程式崩潰
         return dict(_NULL_RESULT)

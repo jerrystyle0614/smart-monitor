@@ -91,3 +91,11 @@ def test_parse_handles_invalid_json():
         result = parse_monitor_intent("亂說一通")
 
     assert result["stock_id"] is None
+
+
+def test_missing_api_key_returns_all_nulls():
+    """未設定 ANTHROPIC_API_KEY 時應回傳全 null 結果"""
+    with patch.dict("os.environ", {}, clear=True):
+        result = parse_monitor_intent("任何輸入")
+    assert result["stock_id"] is None
+    assert result["cost_price"] is None
