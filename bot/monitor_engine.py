@@ -39,25 +39,32 @@ class MonitorEngine:
         self._thread = None
 
     def start(self):
-        """啟動背景監控執行緒"""
+        """啟動背景監控執行緒，若已在執行中則略過（防止重複啟動）"""
+        if self._running:
+            return
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
         print("[monitor] 背景監控引擎已啟動")
 
     def stop(self):
-        """停止背景監控執行緒"""
+        """停止背景監控執行緒，並等待執行緒結束（最多 35 秒）"""
         self._running = False
+        if self._thread:
+            self._thread.join(timeout=35)
         print("[monitor] 背景監控引擎已停止")
 
     def _loop(self):
-        """主迴圈：每 POLL_INTERVAL_SEC 秒執行一次掃描"""
+        """主迴圈：每 POLL_INTERVAL_SEC 秒執行一次掃描，每 0.5 秒檢查是否應停止"""
         while self._running:
             try:
                 self._scan_all()
             except Exception as e:
                 print(f"[monitor] 掃描異常：{e}")
-            time.sleep(POLL_INTERVAL_SEC)
+            for _ in range(POLL_INTERVAL_SEC * 2):  # 以 0.5 秒為步距，快速響應 stop()
+                if not self._running:
+                    break
+                time.sleep(0.5)
 
     def _scan_all(self):
         """掃描所有 MONITORING 使用者並處理警報"""
@@ -89,10 +96,10 @@ class MonitorEngine:
         alerts = []
 
         # 停損條件：股價 <= 停損價，且尚未觸發過
+        # 不在此處設定 fired 旗標，由 _dispatch 在推播成功後再設定
         if (stop is not None
                 and price <= stop
                 and not self._store.get_alert_fired(uid, "stop")):
-            self._store.set_alert_fired(uid, "stop", True)
             pct = f"{(price - cost) / cost * 100:+.2f}%" if cost else ""
             alerts.append({
                 "title": "⚠️ 停損觸發",
@@ -101,13 +108,14 @@ class MonitorEngine:
                     f"已跌破停損價 {stop} 元，建議評估出場。"
                 ),
                 "color": 0xE74C3C,
+                "fired_key": "stop",
             })
 
         # 目標一條件：股價 >= 目標一價，且尚未觸發過
+        # 不在此處設定 fired 旗標，由 _dispatch 在推播成功後再設定
         if (target1 is not None
                 and price >= target1
                 and not self._store.get_alert_fired(uid, "target1")):
-            self._store.set_alert_fired(uid, "target1", True)
             pct = f"{(price - cost) / cost * 100:+.2f}%" if cost else ""
             alerts.append({
                 "title": "🎯 目標一達成",
@@ -116,12 +124,15 @@ class MonitorEngine:
                     f"已達目標一 {target1} 元，可考慮獲利了結。"
                 ),
                 "color": 0x2ECC71,
+                "fired_key": "target1",
             })
 
         return alerts
 
     def _dispatch(self, uid, alerts):
-        """將警報同時推播到 LINE 和 Discord"""
+        """將警報同時推播到 LINE 和 Discord，推播成功後才設定 fired 旗標"""
         for alert in alerts:
             self._line.push(uid, f"{alert['title']}\n\n{alert['message']}")
             self._discord.send(alert["title"], alert["message"], alert["color"])
+            # 推播完成後才標記已觸發，確保失敗時下次仍能重送
+            self._store.set_alert_fired(uid, alert["fired_key"], True)

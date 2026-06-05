@@ -74,11 +74,21 @@ def test_no_alert_when_stop_loss_not_set():
 
 
 def test_dispatch_sends_line_and_discord():
-    """_dispatch 應同時呼叫 LINE push 和 Discord send"""
+    """_dispatch 應同時呼叫 LINE push 和 Discord send，並在推播後設定 fired 旗標"""
     store = _make_store()
     line = MagicMock()
     discord = MagicMock()
     engine = MonitorEngine(store, line, discord)
-    engine._dispatch("u1", [{"title": "停損觸發", "message": "跌破 63", "color": 0xE74C3C}])
+    engine._dispatch("u1", [{"title": "停損觸發", "message": "跌破 63", "color": 0xE74C3C, "fired_key": "stop"}])
     line.push.assert_called_once_with("u1", "停損觸發\n\n跌破 63")
-    discord.send.assert_called_once()
+    discord.send.assert_called_once_with("停損觸發", "跌破 63", 0xE74C3C)
+    store.set_alert_fired.assert_called_once_with("u1", "stop", True)
+
+
+def test_no_alert_when_price_unavailable():
+    """fetch_price 回傳 None 時不應觸發任何警報"""
+    store = _make_store()
+    engine = MonitorEngine(store, MagicMock(), MagicMock())
+    with patch("bot.monitor_engine.fetch_price", return_value=None):
+        alerts = engine._check_user("u1")
+    assert alerts == []
