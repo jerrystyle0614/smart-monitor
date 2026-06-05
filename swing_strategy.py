@@ -76,8 +76,8 @@ def analyze_swing(
             ),
             color=COLOR_RED,
         ))
-    # 在均線上方但距離不足 ma_warn% → 黃燈：即將測試支撐
-    elif 0 <= pct_from_ma20 < ma_warn:
+    # 在均線上方但距離不足 ma_warn%（不含剛好踩線）→ 黃燈：即將測試支撐
+    elif 0 < pct_from_ma20 < ma_warn:
         alerts.append(Alert(
             title="均線支撐即將測試",
             message=(
