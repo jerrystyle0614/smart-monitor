@@ -1,0 +1,19 @@
+{
+  "stock_id": "3312",
+  "stock_name": "弘憶",
+  "total_shares": 5000,
+  "cost_price": 64.86,
+  "target_stage_1": 75.0,
+  "target_stage_2": 85.0,
+  "stop_loss_moving": 67,
+  "stop_loss_tightened": 67,
+  "alert_volume_threshold": 7000,
+  "large_order_lots": 50,
+  "peer_stocks": { "2465": "麗臺", "3550": "聯穎" },
+  "group_stocks": { "5471": "松翰" },
+  "us_tickers": ["NVDA", "SMCI"],
+  "us_drop_threshold_pct": 4.0,
+  "peer_drop_threshold_pct": 5.0,
+  "group_drop_threshold_pct": 4.0,
+  "eval_interval_sec": 5
+}
