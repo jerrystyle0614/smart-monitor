@@ -20,9 +20,22 @@ _TZ_OFFSET    = datetime.timezone(datetime.timedelta(hours=8))
 def is_trading_hours() -> bool:
     """判斷現在是否為台股交易時段（週一到週五 09:00–13:30 UTC+8）"""
     now = datetime.datetime.now(_TZ_OFFSET)
-    if now.weekday() >= 5:  # 週六=5, 週日=6
+    if now.weekday() >= 5:
         return False
     return _MARKET_OPEN <= now.time() <= _MARKET_CLOSE
+
+
+def seconds_until_next_open() -> float:
+    """計算距離下一個台股開盤還有幾秒（最多等到下週一 09:00）"""
+    now = datetime.datetime.now(_TZ_OFFSET)
+    # 找下一個週一到週五的 09:00
+    candidate = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += datetime.timedelta(days=1)
+    # 跳過週末
+    while candidate.weekday() >= 5:
+        candidate += datetime.timedelta(days=1)
+    return (candidate - now).total_seconds()
 
 
 def fetch_price(stock_id: str):
@@ -69,17 +82,26 @@ class MonitorEngine:
         print("[monitor] 背景監控引擎已停止")
 
     def _loop(self):
-        """主迴圈：每 POLL_INTERVAL_SEC 秒執行一次掃描，非交易時段跳過查詢"""
+        """主迴圈：交易時段每 30 秒掃描一次；非交易時段休眠到下次開盤"""
         while self._running:
-            if is_trading_hours():
-                try:
-                    self._scan_all()
-                except Exception as e:
-                    print(f"[monitor] 掃描異常：{e}")
-            for _ in range(POLL_INTERVAL_SEC * 2):  # 以 0.5 秒為步距，快速響應 stop()
-                if not self._running:
-                    break
-                time.sleep(0.5)
+            if not is_trading_hours():
+                secs = seconds_until_next_open()
+                print(f"[monitor] 非交易時段，休眠 {int(secs // 60)} 分鐘至下次開盤")
+                self._sleep(secs)
+                continue
+            try:
+                self._scan_all()
+            except Exception as e:
+                print(f"[monitor] 掃描異常：{e}")
+            self._sleep(POLL_INTERVAL_SEC)
+
+    def _sleep(self, total_secs: float):
+        """可中斷的休眠：每 0.5 秒檢查一次 self._running"""
+        steps = int(total_secs / 0.5)
+        for _ in range(steps):
+            if not self._running:
+                break
+            time.sleep(0.5)
 
     def _scan_all(self):
         """掃描所有 MONITORING 使用者並處理警報"""
