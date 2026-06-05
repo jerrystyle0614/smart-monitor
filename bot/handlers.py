@@ -110,8 +110,7 @@ def handle_message(user_id: str, text: str, store, line,
         sm.pending_config = dict(cfg)
 
         # 還原 current_question（從 store 的 state 資料讀取）
-        raw_state = store._read_state(user_id) if hasattr(store, "_read_state") else {}
-        sm.current_question = raw_state.get("current_question")
+        sm.current_question = store.get_current_question(user_id)
 
         success = sm.apply_answer(text)
         if not success:
@@ -126,10 +125,7 @@ def handle_message(user_id: str, text: str, store, line,
         if missing:
             # 仍有未填欄位，繼續追問下一個
             sm.current_question = missing[0]
-            if hasattr(store, "_read_state"):
-                s = store._read_state(user_id)
-                s["current_question"] = sm.current_question
-                store._write_state(user_id, s)
+            store.set_current_question(user_id, sm.current_question)
             line.reply(reply_token, sm.next_question())
         else:
             # 所有必填欄位齊全，切換到確認狀態
@@ -162,10 +158,7 @@ def handle_message(user_id: str, text: str, store, line,
         # 有必填欄位缺失，進入追問流程
         store.set_state(user_id, "COLLECTING")
         sm.current_question = missing[0]
-        if hasattr(store, "_read_state"):
-            s = store._read_state(user_id)
-            s["current_question"] = sm.current_question
-            store._write_state(user_id, s)
+        store.set_current_question(user_id, sm.current_question)
         line.reply(reply_token, sm.next_question())
     else:
         # 所有欄位齊全，進入確認流程

@@ -67,3 +67,21 @@ def test_multiple_users_isolated(store):
     store.set_state("user_B", "IDLE")
     assert store.get_state("user_A") == "CONFIRMING"
     assert store.get_state("user_B") == "IDLE"
+
+
+def test_get_current_question_default_none(store):
+    """未設定 current_question 時應回傳 None"""
+    assert store.get_current_question("user_001") is None
+
+
+def test_set_and_get_current_question(store):
+    """設定 current_question 後應能正確讀取"""
+    store.set_current_question("user_001", "total_shares")
+    assert store.get_current_question("user_001") == "total_shares"
+
+
+def test_set_current_question_none_clears(store):
+    """設定為 None 應清除 current_question"""
+    store.set_current_question("user_001", "total_shares")
+    store.set_current_question("user_001", None)
+    assert store.get_current_question("user_001") is None

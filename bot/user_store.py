@@ -6,6 +6,7 @@ user_store.py — 使用者資料讀寫模組
 import json
 import datetime
 from pathlib import Path
+from typing import Optional
 
 
 class UserStore:
@@ -88,3 +89,13 @@ class UserStore:
         state["call_count"] = state.get("call_count", 0) + 1
         self._write_state(uid, state)
         return state["call_count"]
+
+    def get_current_question(self, uid: str) -> Optional[str]:
+        """取得目前追問的欄位名稱"""
+        return self._read_state(uid).get("current_question")
+
+    def set_current_question(self, uid: str, field: Optional[str]) -> None:
+        """設定目前追問的欄位名稱"""
+        state = self._read_state(uid)
+        state["current_question"] = field
+        self._write_state(uid, state)

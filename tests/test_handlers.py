@@ -79,3 +79,36 @@ def test_handle_message_monitoring_stop_sets_idle():
     handle_message("user_001", "停止", store, line)
     store.set_state.assert_called_with("user_001", "IDLE")
     line.reply.assert_called_once()
+
+
+def test_handle_message_collecting_valid_answer_advances():
+    """COLLECTING 狀態提供有效數字應更新 config 並繼續追問或進入 CONFIRMING"""
+    config = {
+        "stock_id": "3312", "stock_name": "弘憶",
+        "total_shares": None, "cost_price": None,
+        "stop_loss_moving": None, "target_stage_1": None,
+        "target_stage_2": None,
+    }
+    store, line = _make_deps(state="COLLECTING", config=config)
+    store.get_current_question = MagicMock(return_value="total_shares")
+    store.set_current_question = MagicMock()
+    handle_message("user_001", "5", store, line)
+    store.set_config.assert_called_once()
+    line.reply.assert_called_once()
+
+
+def test_handle_message_collecting_invalid_answer_reprompts():
+    """COLLECTING 狀態提供非數字應回覆格式錯誤訊息，不更新 config"""
+    config = {
+        "stock_id": "3312", "stock_name": "弘憶",
+        "total_shares": None, "cost_price": None,
+        "stop_loss_moving": None, "target_stage_1": None,
+        "target_stage_2": None,
+    }
+    store, line = _make_deps(state="COLLECTING", config=config)
+    store.get_current_question = MagicMock(return_value="total_shares")
+    store.set_current_question = MagicMock()
+    handle_message("user_001", "不知道", store, line)
+    line.reply.assert_called_once()
+    args = line.reply.call_args[0]
+    assert "格式" in args[1] or "錯誤" in args[1] or "請" in args[1]
