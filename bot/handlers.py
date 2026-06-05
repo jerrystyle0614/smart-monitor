@@ -113,7 +113,7 @@ def handle_message(user_id: str, text: str, store, line,
             cfg = store.get_config(user_id)
             sm = StateMachine()
             sm.pending_config = cfg
-            line.reply(reply_token, sm.build_confirm_card())
+            line.reply(reply_token, _confirm_card(sm))
         elif is_monitor_intent(text):
             # 使用者重新輸入完整監控條件，重新解析並覆蓋舊 config
             parsed = parse_monitor_intent(text)
@@ -127,25 +127,13 @@ def handle_message(user_id: str, text: str, store, line,
                 store.set_current_question(user_id, sm.current_question)
                 line.reply(reply_token, sm.next_question())
             else:
-                line.reply(reply_token, sm.build_confirm_card())
+                line.reply(reply_token, _confirm_card(sm))
         else:
-            # 其他回應重新顯示確認卡片並提示可用修改指令
+            # 其他回應重新顯示確認卡片
             cfg = store.get_config(user_id)
             sm = StateMachine()
             sm.pending_config = cfg
-            card = sm.build_confirm_card()
-            hint = (
-                "\n\n📝 可修改的欄位：\n"
-                "• 修改股票 台積電　（同時更新代號+名稱）\n"
-                "• 修改股票代號 2330\n"
-                "• 修改持股 5　　　（張數）\n"
-                "• 修改均價 650\n"
-                "• 修改停損 600\n"
-                "• 修改目標 800　　（目標一）\n"
-                "• 修改目標二 900\n"
-                "\n也可省略「修改」，例如直接輸入「停損600」"
-            )
-            line.reply(reply_token, card + hint)
+            line.reply(reply_token, _confirm_card(sm))
         return
 
     # --- COLLECTING 狀態：追問缺少的必填欄位 ---
@@ -176,7 +164,7 @@ def handle_message(user_id: str, text: str, store, line,
         else:
             # 所有必填欄位齊全，切換到確認狀態
             store.set_state(user_id, "CONFIRMING")
-            line.reply(reply_token, sm.build_confirm_card())
+            line.reply(reply_token, _confirm_card(sm))
         return
 
     # --- IDLE 狀態：由 Claude 判斷是否為監控意圖 ---
@@ -245,7 +233,7 @@ def handle_message(user_id: str, text: str, store, line,
     else:
         # 所有欄位齊全，進入確認流程
         store.set_state(user_id, "CONFIRMING")
-        line.reply(reply_token, sm.build_confirm_card())
+        line.reply(reply_token, _confirm_card(sm))
 
 
 def _reply_status(reply_token: str, cfg: dict, line) -> None:
@@ -262,6 +250,35 @@ def _reply_status(reply_token: str, cfg: dict, line) -> None:
         f"目標一：{cfg.get('target_stage_1','未設定')} 元"
     )
     line.reply(reply_token, msg)
+
+
+def _fetch_close(stock_id: str) -> tuple:
+    """從 Fugle 查詢最新收盤價與漲跌幅，回傳 (close_price, change_pct)，失敗回傳 (None, None)"""
+    import requests, os
+    api_key = os.environ.get("FUGLE_API_KEY")
+    if not api_key or not stock_id:
+        return None, None
+    try:
+        r = requests.get(
+            f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{stock_id}",
+            headers={"X-API-KEY": api_key},
+            timeout=8,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            close = data.get("closePrice") or data.get("lastPrice")
+            pct = data.get("changePercent")
+            return close, pct
+    except Exception as e:
+        print(f"[警告] 查詢收盤價失敗：{e}")
+    return None, None
+
+
+def _confirm_card(sm) -> str:
+    """查詢收盤價後建立確認卡片"""
+    stock_id = sm.pending_config.get("stock_id")
+    close, pct = _fetch_close(stock_id)
+    return sm.build_confirm_card(close_price=close, change_pct=pct)
 
 
 def _resolve_stock(value_str: str) -> Optional[dict]:
@@ -396,9 +413,10 @@ def _handle_update(user_id: str, text: str, field: str,
         value = float(parts[-1].replace("元", ""))
         cfg[field] = value
         store.set_config(user_id, cfg)
+        store.reset_alerts(user_id)
         label = "停損" if field == "stop_loss_moving" else "目標"
         line.reply(reply_token,
-                   f"✅ 已更新{label}價為 {value} 元，5 秒內生效。\n\n"
+                   f"✅ 已更新{label}價為 {value} 元，30 秒內生效。\n\n"
                    f"可用指令：狀態 ／ 修改停損 X ／ 修改目標 X ／ 停止")
     except (ValueError, IndexError):
         line.reply(reply_token, "格式錯誤，請輸入如：修改停損 62")
