@@ -18,6 +18,8 @@ from bot.handlers import handle_follow, handle_message
 from bot.line_client import LineClient
 from bot.user_store import UserStore
 from bot.claude_parser import load_stock_map
+from bot.monitor_engine import MonitorEngine
+from notifier import DiscordNotifier
 
 
 def _clear_user_data():
@@ -29,16 +31,26 @@ def _clear_user_data():
     print("[server] 使用者資料已清空")
 
 
+# 在 lifespan 之前初始化，確保 lifespan 函式可直接引用
+_store = UserStore()
+_line = LineClient()
+_engine = None  # 由 lifespan 啟動後賦值
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _engine
     _clear_user_data()
     load_stock_map()  # 從 Fugle 載入完整股票對照表
+    discord = DiscordNotifier()
+    _engine = MonitorEngine(_store, _line, discord)
+    _engine.start()
     yield
+    if _engine:
+        _engine.stop()
 
 
 app = FastAPI(lifespan=lifespan)
-_store = UserStore()
-_line = LineClient()
 
 
 def _verify_signature(body: bytes, signature: str) -> bool:
