@@ -15,5 +15,10 @@
   "us_drop_threshold_pct": 4.0,
   "peer_drop_threshold_pct": 5.0,
   "group_drop_threshold_pct": 4.0,
-  "eval_interval_sec": 5
+  "eval_interval_sec": 5,
+  "swing_ma_days": 20,
+  "swing_lookback_days": 20,
+  "swing_pullback_warn_pct": 5.0,
+  "swing_pullback_pct": 8.0,
+  "swing_ma_warn_pct": 2.0
 }
