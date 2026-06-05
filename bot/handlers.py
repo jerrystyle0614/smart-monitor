@@ -136,7 +136,6 @@ def handle_message(user_id: str, text: str, store, line,
     # --- IDLE 狀態：判斷是否為監控意圖，否則回覆說明 ---
     sm = StateMachine()
     if not sm.should_parse(text):
-        # 非監控相關訊息，回覆操作說明
         line.reply(reply_token, HELP_MSG)
         return
 
@@ -185,10 +184,13 @@ def _reply_status(reply_token: str, cfg: dict, line) -> None:
 def _handle_update(user_id: str, text: str, field: str,
                    reply_token: str, store, line) -> None:
     """處理修改停損/目標指令，解析數字後更新 config"""
+    cfg = store.get_config(user_id)
+    if not cfg:
+        line.reply(reply_token, "目前沒有監控設定，請先設定監控條件。")
+        return
     try:
         parts = text.split()
         value = float(parts[-1].replace("元", ""))
-        cfg = store.get_config(user_id)
         cfg[field] = value
         store.set_config(user_id, cfg)
         label = "停損" if field == "stop_loss_moving" else "目標"

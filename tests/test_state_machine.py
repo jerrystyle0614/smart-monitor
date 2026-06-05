@@ -15,7 +15,7 @@ def _make_sm(state="IDLE", config=None):
 
 
 def test_trigger_keywords_change_state_to_parsing():
-    """包含監控關鍵字的訊息應將狀態切換到 PARSING"""
+    """包含監控關鍵字的訊息，should_parse() 應回傳 True，非關鍵字回傳 False"""
     sm = _make_sm("IDLE")
     assert sm.should_parse("我想監控弘憶") is True
     assert sm.should_parse("幫我追蹤台積電") is True
