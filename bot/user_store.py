@@ -157,3 +157,34 @@ class UserStore:
         state = self._read_state(uid)
         state["current_question"] = field
         self._write_state(uid, state)
+
+    def get_all_monitoring_users(self) -> list:
+        """回傳所有目前處於 MONITORING 狀態的使用者 ID 列表"""
+        result = []
+        if not self._base.exists():
+            return result
+        for user_dir in self._base.iterdir():
+            if user_dir.is_dir():
+                uid = user_dir.name
+                if self.get_state(uid) == "MONITORING":
+                    result.append(uid)
+        return result
+
+    def get_alert_fired(self, uid: str, alert_key: str) -> bool:
+        """取得指定警報是否已觸發，預設 False"""
+        state = self._read_state(uid)
+        return state.get("alerts_fired", {}).get(alert_key, False)
+
+    def set_alert_fired(self, uid: str, alert_key: str, value: bool) -> None:
+        """設定指定警報觸發旗標"""
+        state = self._read_state(uid)
+        if "alerts_fired" not in state:
+            state["alerts_fired"] = {}
+        state["alerts_fired"][alert_key] = value
+        self._write_state(uid, state)
+
+    def reset_alerts(self, uid: str) -> None:
+        """清除所有警報旗標（修改監控條件時呼叫）"""
+        state = self._read_state(uid)
+        state["alerts_fired"] = {}
+        self._write_state(uid, state)
