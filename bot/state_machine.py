@@ -1,6 +1,6 @@
 """
 state_machine.py — 對話狀態機
-管理每位使用者的對話流程：IDLE → PARSING → COLLECTING → CONFIRMING → MONITORING
+管理每位使用者的對話流程：IDLE → COLLECTING → CONFIRMING → MONITORING
 """
 
 from typing import Optional
@@ -49,23 +49,26 @@ class StateMachine:
         self.current_question = missing[0]
         return FIELD_QUESTIONS[self.current_question]
 
-    def apply_answer(self, text: str) -> None:
-        """將使用者對追問的回答套用到 pending_config"""
+    def apply_answer(self, text: str) -> bool:
+        """將使用者對追問的回答套用到 pending_config，回傳 True 表示成功，False 表示格式錯誤"""
         field = self.current_question
         if field is None:
-            return
+            return True
 
-        text = text.strip()
-
-        if field == "total_shares":
-            # 使用者輸入張數，轉換為股數（1 張 = 1000 股）
-            lots = float(text.replace("張", "").strip())
-            self.pending_config["total_shares"] = int(lots * 1000)
-        elif field in ("cost_price", "stop_loss_moving",
-                       "target_stage_1", "target_stage_2"):
-            self.pending_config[field] = float(text.replace("元", "").strip())
-
-        self.current_question = None
+        try:
+            text = text.strip()
+            if field == "total_shares":
+                # 使用者輸入張數，轉換為股數（1 張 = 1000 股）
+                lots = float(text.replace("張", "").strip())
+                self.pending_config["total_shares"] = int(lots * 1000)
+            elif field in ("cost_price", "stop_loss_moving",
+                           "target_stage_1", "target_stage_2"):
+                self.pending_config[field] = float(text.replace("元", "").strip())
+            self.current_question = None
+            return True
+        except ValueError:
+            # current_question 保持不變，handlers.py 可以重問同一個問題
+            return False
 
     def build_confirm_card(self) -> str:
         """建立確認卡片文字"""
@@ -90,9 +93,9 @@ class StateMachine:
             f"股票：{stock_id} {stock_name}",
             f"持股：{lots} 張（{shares:,} 股）",
             f"均價：{cost} 元",
-            f"停損：{stop if stop else '未設定'} 元{_pct(stop)}",
-            f"目標一：{t1 if t1 else '未設定'} 元{_pct(t1)}",
-            f"目標二：{t2 if t2 else '未設定'} 元{_pct(t2)}",
+            f"停損：{'未設定' if stop is None else f'{stop} 元{_pct(stop)}'}",
+            f"目標一：{'未設定' if t1 is None else f'{t1} 元{_pct(t1)}'}",
+            f"目標二：{'未設定' if t2 is None else f'{t2} 元{_pct(t2)}'}",
             "\n輸入「確認」開始監控，或「重新輸入」重來。",
         ]
         return "\n".join(lines)

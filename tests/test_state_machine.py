@@ -94,7 +94,8 @@ def test_apply_answer_shares():
         "target_stage_2": None,
     })
     sm.current_question = "total_shares"
-    sm.apply_answer("5")
+    result = sm.apply_answer("5")
+    assert result is True
     assert sm.pending_config["total_shares"] == 5000  # 5 張 = 5000 股
 
 
@@ -107,8 +108,24 @@ def test_apply_answer_price():
         "target_stage_2": None,
     })
     sm.current_question = "cost_price"
-    sm.apply_answer("64.86")
+    result = sm.apply_answer("64.86")
+    assert result is True
     assert sm.pending_config["cost_price"] == pytest.approx(64.86)
+
+
+def test_apply_answer_invalid_input_returns_false():
+    """非數字輸入應回傳 False，且 current_question 保持不變"""
+    sm = _make_sm(state="COLLECTING", config={
+        "stock_id": "3312", "stock_name": "弘憶",
+        "total_shares": None, "cost_price": None,
+        "stop_loss_moving": None, "target_stage_1": None,
+        "target_stage_2": None,
+    })
+    sm.current_question = "total_shares"
+    result = sm.apply_answer("不知道")
+    assert result is False
+    assert sm.current_question == "total_shares"  # 保持不變，可以重問
+    assert sm.pending_config["total_shares"] is None  # 未更新
 
 
 def test_build_confirm_card():
