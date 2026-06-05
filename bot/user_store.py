@@ -4,7 +4,6 @@ user_store.py — 使用者資料讀寫模組
 """
 
 import json
-import os
 import datetime
 from pathlib import Path
 
@@ -32,8 +31,12 @@ class UserStore:
         path = self._state_path(uid)
         if not path.exists():
             return {}
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[警告] 讀取 {path} 失敗，重置為空：{e}")
+            return {}
 
     def _write_state(self, uid: str, data: dict) -> None:
         """寫入 state.json"""
@@ -55,8 +58,12 @@ class UserStore:
         path = self._config_path(uid)
         if not path.exists():
             return {}
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[警告] 讀取 {path} 失敗，回傳空 config：{e}")
+            return {}
 
     def set_config(self, uid: str, config: dict) -> None:
         """設定使用者 config"""
