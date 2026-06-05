@@ -93,7 +93,7 @@ def run_analysis(config: dict, notifier: DiscordNotifier, mode: Mode) -> None:
 
     # 抓取日 K 資料，失敗時印錯誤並提早返回
     try:
-        df = fetch_candles(stock_id, days=lookback + 10)
+        df = fetch_candles(stock_id, days=max(ma_days, lookback) * 3)
     except RuntimeError as e:
         print(f"[錯誤] 抓取 {stock_id} 日 K 失敗：{e}")
         return
