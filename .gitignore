@@ -1,0 +1,17 @@
+# 敏感資訊
+.env
+
+# 使用者資料
+users/
+
+# 文件
+docs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# macOS
+.DS_Store

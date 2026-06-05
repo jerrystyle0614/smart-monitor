@@ -88,11 +88,12 @@ class StateMachine:
                 return ""
             return f"（{(price - cost) / cost * 100:+.2f}%）"
 
+        stock_display = f"{stock_id} {stock_name}" if stock_id else f"⚠️ 代號未知（{stock_name}）"
         lines = [
             "📋 請確認監控條件\n",
-            f"股票：{stock_id} {stock_name}",
-            f"持股：{lots} 張（{shares:,} 股）",
-            f"均價：{cost} 元",
+            f"股票：{stock_display}",
+            f"持股：{'未設定' if not shares else f'{lots} 張（{shares:,} 股）'}",
+            f"均價：{'未設定' if cost is None else f'{cost} 元'}",
             f"停損：{'未設定' if stop is None else f'{stop} 元{_pct(stop)}'}",
             f"目標一：{'未設定' if t1 is None else f'{t1} 元{_pct(t1)}'}",
             f"目標二：{'未設定' if t2 is None else f'{t2} 元{_pct(t2)}'}",

@@ -5,14 +5,74 @@ claude_parser.py — 自然語言監控條件解析模組
 
 import json
 import os
+import requests
 import anthropic
+from google import genai as google_genai
+
+# 股票名稱→代號對照表，啟動時從 Fugle 載入
+_STOCK_MAP: dict[str, str] = {}  # {名稱: 代號}
+
+
+def load_stock_map() -> None:
+    """從 Fugle API 載入上市(TWSE)和上櫃(TPEx)的完整股票清單，建立名稱→代號對照表"""
+    global _STOCK_MAP
+    api_key = os.environ.get("FUGLE_API_KEY")
+    if not api_key:
+        print("[警告] 未設定 FUGLE_API_KEY，股票名稱查詢將無法使用")
+        return
+    combined = {}
+    for exchange in ("TWSE", "TPEx"):
+        try:
+            r = requests.get(
+                f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/tickers",
+                headers={"X-API-KEY": api_key},
+                params={"type": "EQUITY", "exchange": exchange},
+                timeout=15,
+            )
+            if r.status_code == 200:
+                for item in r.json().get("data", []):
+                    name = item.get("name", "").strip()
+                    symbol = item.get("symbol", "").strip()
+                    if name and symbol:
+                        combined[name] = symbol
+        except Exception as e:
+            print(f"[警告] 載入 {exchange} 股票清單失敗：{e}")
+    _STOCK_MAP = combined
+    print(f"[stock_map] 已載入 {len(_STOCK_MAP)} 筆股票資料")
 
 # 系統提示：指示 Claude 抽取監控條件並以純 JSON 回傳
+# 輸入字數上限（超過截斷，避免長訊息耗費大量 token）
+INPUT_MAX_CHARS = 200
+
+# 非監控意圖的閒聊回覆 token 上限
+CHAT_MAX_TOKENS = 80
+
+INTENT_SYSTEM_PROMPT = """判斷使用者的訊息是否為「設定股票監控條件」的意圖。
+只回傳 true 或 false，不要其他文字。
+
+屬於監控意圖的例子（回傳 true）：
+- 「我買了弘憶 5 張，成本 64.86」
+- 「幫我監控台積電，停損 900」
+- 「3312 弘憶，5張，均價64.86」
+- 「弘憶5張，成本在64.86」
+- 「我有持股想設定通知」
+
+不屬於監控意圖的例子（回傳 false）：
+- 「今天天氣真好」
+- 「你好」
+- 「謝謝」
+- 「幫我查一下台積電股價」
+"""
+
 SYSTEM_PROMPT = """你是一個台股監控條件解析助理。
 從使用者的自然語言輸入中，抽取以下欄位並以 JSON 格式回傳。
 無法確定的欄位一律回傳 null，絕對不要猜測。
+stock_id 規則：如果使用者直接說代號（如 3312、0050、0056）就用那個；台股代號固定為 4~6 位數字，ETF 代號通常為 4~6 位（如 0050、0056、00878）；如果只說股票名稱（如弘憶、台積電、鴻海），請根據你的台股知識填入對應代號；真的不確定才回傳 null。
+stock_name 規則：只要知道 stock_id 對應的名稱，就必須填入 stock_name，例如 0056 → 元大高股息、0050 → 元大台灣50、2330 → 台積電；不要回傳 null。
+張數斷詞規則：代號後面緊接數字和「張」時，代號本身不含「張」前面的數字，例如「00561張」應解析為代號 0056、張數 1。
+停損價格：直接使用使用者說的數字填入 stop_loss_moving，不論高低，不要自動移到其他欄位。
 
-回傳格式（只回傳 JSON，不要其他文字）：
+回傳格式（只回傳純 JSON，不要 markdown、不要 ```json、不要任何說明文字）：
 {
   "stock_id": "股票代號，例如 3312（字串）",
   "stock_name": "股票名稱，例如 弘憶",
@@ -36,6 +96,9 @@ SYSTEM_PROMPT = """你是一個台股監控條件解析助理。
 }
 """
 
+# Claude 閒聊失敗時的備用訊息
+HELP_FALLBACK = "輸入你的持股狀況即可開始監控，例如：「我買了弘憶 5 張，均價 64.86，停損 63 元」"
+
 # 全 null 結果範本，API 失敗時使用
 _NULL_RESULT = {
     "stock_id": None,
@@ -48,37 +111,133 @@ _NULL_RESULT = {
 }
 
 
-def parse_monitor_intent(text: str) -> dict:
-    """
-    解析使用者自然語言輸入，回傳結構化監控參數。
+def _truncate(text: str) -> str:
+    """截斷過長輸入，超過 INPUT_MAX_CHARS 的部分直接丟棄"""
+    if len(text) > INPUT_MAX_CHARS:
+        print(f"[警告] 輸入超過 {INPUT_MAX_CHARS} 字，已截斷")
+        return text[:INPUT_MAX_CHARS]
+    return text
 
-    Args:
-        text: 使用者輸入的自然語言字串
 
-    Returns:
-        dict，包含 7 個欄位，無法確定的欄位為 None
-        API 失敗或 JSON 解析失敗時回傳全 None 的 dict
+def is_monitor_intent(text: str) -> bool:
     """
-    # 確認 API 金鑰存在，缺少時提前回傳空結果避免無謂的網路呼叫
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    用 Gemini 判斷使用者訊息是否為設定監控條件的意圖（免費額度）。
+    API 失敗時預設回傳 False（不觸發解析）。
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("[警告] 未設定 ANTHROPIC_API_KEY，回傳空結果")
-        return dict(_NULL_RESULT)
+        return False
 
     try:
-        # 建立 Anthropic 客戶端並送出解析請求
+        client = google_genai.Client(api_key=api_key)
+        prompt = f"{INTENT_SYSTEM_PROMPT}\n\n使用者訊息：{_truncate(text)}"
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash-lite",
+            contents=prompt,
+        )
+        raw = response.text.strip().lower()
+        print(f"[Gemini 意圖判斷] {raw}")
+        return raw == "true"
+    except Exception as e:
+        print(f"[警告] Gemini 意圖判斷失敗：{e}")
+        return False
+
+
+def chat_reply(text: str) -> str:
+    """
+    非監控意圖的閒聊回覆。
+    回覆限制在 CHAT_MAX_TOKENS token 內，失敗時回傳預設說明訊息。
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return HELP_FALLBACK
+
+    try:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=256,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": text}],
+            max_tokens=CHAT_MAX_TOKENS,
+            system=(
+                "你是一個友善的台股監控助理，名叫 Smart Monitor。"
+                "用繁體中文簡短回覆使用者，不超過 50 字。"
+                "如果使用者問的問題超出股票監控範疇，"
+                "禮貌地說明你主要負責股票監控設定，並引導他輸入持股條件。"
+            ),
+            messages=[{"role": "user", "content": _truncate(text)}],
         )
-        # 取出回應文字，去除首尾空白後解析為 JSON
-        raw = response.content[0].text.strip()
-        result = json.loads(raw)
-        # 確保只回傳已知的欄位，防止 Claude 加入多餘的鍵值污染下遊邏輯
-        return {k: result.get(k) for k in _NULL_RESULT}
-    except Exception:
-        # 任何例外（網路錯誤、JSON 解析失敗等）一律回傳全 null，不讓主程式崩潰
+        return response.content[0].text.strip()
+    except Exception as e:
+        print(f"[警告] Claude 閒聊回覆失敗：{e}")
+        return HELP_FALLBACK
+
+
+def parse_monitor_intent(text: str) -> dict:
+    """
+    用 Gemini 解析使用者自然語言輸入，回傳結構化監控參數。
+    API 失敗或 JSON 解析失敗時回傳全 None 的 dict。
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("[警告] 未設定 GEMINI_API_KEY，回傳空結果")
         return dict(_NULL_RESULT)
+
+    try:
+        client = google_genai.Client(api_key=api_key)
+        prompt = f"{SYSTEM_PROMPT}\n\n使用者輸入：{_truncate(text)}"
+        response = client.models.generate_content(
+            model="models/gemini-2.5-flash-lite",
+            contents=prompt,
+        )
+        raw = response.text.strip()
+        # 去除 Gemini 有時回傳的 markdown 包裝（```json ... ```）
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        print(f"[Gemini 解析] {raw}")
+        result = json.loads(raw)
+        parsed = {k: result.get(k) for k in _NULL_RESULT}
+
+        # 用 Fugle 對照表驗證 stock_id，若 AI 猜錯就用名稱重新查
+        parsed = _verify_stock(parsed)
+        return parsed
+    except Exception as e:
+        print(f"[警告] Gemini 解析失敗：{e}")
+        return dict(_NULL_RESULT)
+
+
+def _verify_stock(parsed: dict) -> dict:
+    """用 Fugle 對照表驗證並修正 stock_id / stock_name。"""
+    stock_id = parsed.get("stock_id")
+    stock_name = parsed.get("stock_name")
+    reverse_map = {v: k for k, v in _STOCK_MAP.items()}
+
+    # 代號存在且對應名稱正確 → 不動
+    if stock_id and stock_id in reverse_map:
+        fugle_name = reverse_map[stock_id]
+        if stock_name and stock_name != fugle_name:
+            print(f"[verify_stock] 名稱修正：{stock_name} → {fugle_name}")
+        parsed["stock_name"] = fugle_name
+        return parsed
+
+    # 代號不存在或為 null → 用名稱查代號
+    if stock_name and stock_name in _STOCK_MAP:
+        parsed["stock_id"] = _STOCK_MAP[stock_name]
+        print(f"[verify_stock] 用名稱查代號：{stock_name} → {parsed['stock_id']}")
+        return parsed
+
+    # 部分名稱比對
+    if stock_name:
+        for name, symbol in _STOCK_MAP.items():
+            if stock_name in name:
+                parsed["stock_id"] = symbol
+                parsed["stock_name"] = name
+                print(f"[verify_stock] 部分比對：{stock_name} → {symbol} {name}")
+                return parsed
+
+    # 完全找不到，設為 null 讓使用者手動補填
+    if stock_id or stock_name:
+        print(f"[verify_stock] 找不到：{stock_id} {stock_name}，設為 null")
+        parsed["stock_id"] = None
+    return parsed

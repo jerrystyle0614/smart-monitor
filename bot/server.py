@@ -8,14 +8,35 @@ import hashlib
 import hmac
 import json
 import os
+import shutil
+from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
+from contextlib import asynccontextmanager
 
 from bot.handlers import handle_follow, handle_message
 from bot.line_client import LineClient
 from bot.user_store import UserStore
+from bot.claude_parser import load_stock_map
 
-app = FastAPI()
+
+def _clear_user_data():
+    """清空所有使用者資料，每次 server 啟動時呼叫，確保測試環境乾淨"""
+    users_dir = Path("users")
+    if users_dir.exists():
+        shutil.rmtree(users_dir)
+    users_dir.mkdir()
+    print("[server] 使用者資料已清空")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _clear_user_data()
+    load_stock_map()  # 從 Fugle 載入完整股票對照表
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 _store = UserStore()
 _line = LineClient()
 

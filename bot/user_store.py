@@ -5,8 +5,19 @@ user_store.py — 使用者資料讀寫模組
 
 import json
 import datetime
+import time
 from pathlib import Path
 from typing import Optional
+
+# 冷卻機制參數
+COOLDOWN_WINDOW_SEC = 30   # 觀察視窗（秒）
+COOLDOWN_MSG_LIMIT  = 5    # 視窗內超過此則數觸發冷卻
+COOLDOWN_BLOCK_SEC  = 60   # 冷卻封鎖時間（秒）
+
+# 意圖失敗閾值
+INTENT_FAIL_GUIDE   = 5    # 失敗幾次後給範例引導
+INTENT_FAIL_WARN    = 10   # 失敗幾次後警告有上限
+INTENT_FAIL_BLOCK   = 20   # 失敗幾次後視為惡意，封鎖當日
 
 
 class UserStore:
@@ -89,6 +100,53 @@ class UserStore:
         state["call_count"] = state.get("call_count", 0) + 1
         self._write_state(uid, state)
         return state["call_count"]
+
+    def get_daily_intent_fail_count(self, uid: str) -> int:
+        """取得今日意圖判斷失敗次數"""
+        today = datetime.date.today().isoformat()
+        state = self._read_state(uid)
+        if state.get("intent_fail_date") != today:
+            return 0
+        return state.get("intent_fail_count", 0)
+
+    def increment_intent_fail_count(self, uid: str) -> int:
+        """累加今日意圖判斷失敗次數並回傳新值"""
+        today = datetime.date.today().isoformat()
+        state = self._read_state(uid)
+        if state.get("intent_fail_date") != today:
+            state["intent_fail_date"] = today
+            state["intent_fail_count"] = 0
+        state["intent_fail_count"] = state.get("intent_fail_count", 0) + 1
+        self._write_state(uid, state)
+        return state["intent_fail_count"]
+
+    def check_cooldown(self, uid: str) -> bool:
+        """
+        冷卻機制：30 秒內超過 5 則訊息則封鎖 60 秒。
+        回傳 True 表示目前在冷卻中（應拒絕處理）。
+        """
+        now = time.time()
+        state = self._read_state(uid)
+
+        # 檢查是否在封鎖期
+        blocked_until = state.get("cooldown_blocked_until", 0)
+        if now < blocked_until:
+            return True
+
+        # 記錄本次訊息時間戳，清除視窗外的舊記錄
+        timestamps = state.get("msg_timestamps", [])
+        timestamps.append(now)
+        timestamps = [t for t in timestamps if now - t <= COOLDOWN_WINDOW_SEC]
+        state["msg_timestamps"] = timestamps
+
+        # 超過視窗內訊息數量限制，設定封鎖期
+        if len(timestamps) > COOLDOWN_MSG_LIMIT:
+            state["cooldown_blocked_until"] = now + COOLDOWN_BLOCK_SEC
+            self._write_state(uid, state)
+            return True
+
+        self._write_state(uid, state)
+        return False
 
     def get_current_question(self, uid: str) -> Optional[str]:
         """取得目前追問的欄位名稱"""
