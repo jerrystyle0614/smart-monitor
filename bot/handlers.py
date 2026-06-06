@@ -132,6 +132,12 @@ def handle_message(user_id: str, text: str, store, line,
             # 使用者取消，回到 IDLE 重新輸入
             store.set_state(user_id, "IDLE")
             line.reply(reply_token, "已取消，請重新輸入監控條件。")
+        elif _try_confirm_edit_multi(user_id, text, store):
+            # 使用者一次修改多個欄位（逗號分隔），全部套用後重新顯示卡片
+            cfg = store.get_config(user_id)
+            sm = StateMachine()
+            sm.pending_config = cfg
+            line.reply(reply_token, _confirm_card(sm))
         elif _try_confirm_edit(user_id, text, store):
             # 使用者修改單一欄位，重新顯示更新後的確認卡片
             cfg = store.get_config(user_id)
@@ -330,6 +336,38 @@ def _resolve_stock(value_str: str) -> Optional[dict]:
 
     print(f"[_resolve_stock] 找不到：{value_str}")
     return None
+
+
+def _try_confirm_edit_multi(user_id: str, text: str, store) -> bool:
+    """
+    處理逗號分隔的多欄位修改指令，例如「修改持股1，修改均價90，修改停損40」。
+    所有片段都能被 _try_confirm_edit 識別才套用，否則回傳 False 不做任何修改。
+    """
+    import re
+    # 用中文逗號或英文逗號分割
+    parts = [p.strip() for p in re.split(r'[，,]', text) if p.strip()]
+    # 至少要有 2 個片段才算多欄位修改（單一片段交給原本的 _try_confirm_edit 處理）
+    if len(parts) < 2:
+        return False
+    # 每個片段都必須以「修改」開頭或是已知的欄位別名才處理，否則視為完整句子不攔截
+    KNOWN_PREFIXES = ("修改", "均價", "成本", "停損", "持股", "張數", "目標")
+    if not all(any(p.startswith(prefix) for prefix in KNOWN_PREFIXES) for p in parts):
+        return False
+    # 在暫存副本上逐一套用，全部成功才寫入
+    import copy, json as _json
+    from pathlib import Path
+    cfg = store.get_config(user_id)
+    tmp_cfg = copy.deepcopy(cfg)
+    tmp_store = type('TmpStore', (), {
+        'get_config': lambda self, uid: tmp_cfg,
+        'set_config': lambda self, uid, c: tmp_cfg.update(c),
+    })()
+    for part in parts:
+        if not _try_confirm_edit(user_id, part, tmp_store):
+            return False
+    # 全部成功，寫回真實 store
+    store.set_config(user_id, tmp_cfg)
+    return True
 
 
 def _try_confirm_edit(user_id: str, text: str, store) -> bool:
