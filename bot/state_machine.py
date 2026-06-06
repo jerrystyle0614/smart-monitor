@@ -70,8 +70,8 @@ class StateMachine:
             # current_question 保持不變，handlers.py 可以重問同一個問題
             return False
 
-    def build_confirm_card(self) -> str:
-        """建立確認卡片文字"""
+    def build_confirm_card(self, close_price: float = None, change_pct: float = None) -> str:
+        """建立確認卡片文字，可選傳入即時收盤價與漲跌幅"""
         cfg = self.pending_config
         stock_id   = cfg.get("stock_id", "")
         stock_name = cfg.get("stock_name", "")
@@ -89,14 +89,27 @@ class StateMachine:
             return f"（{(price - cost) / cost * 100:+.2f}%）"
 
         stock_display = f"{stock_id} {stock_name}" if stock_id else f"⚠️ 代號未知（{stock_name}）"
+
+        if close_price is not None:
+            sign = "+" if (change_pct or 0) >= 0 else ""
+            pct_str = f"{sign}{change_pct:.2f}%" if change_pct is not None else ""
+            close_line = f"收盤價：{close_price} 元 {pct_str}".strip()
+        else:
+            close_line = "收盤價：查詢中"
+
         lines = [
             "📋 請確認監控條件\n",
             f"股票：{stock_display}",
+            close_line,
             f"持股：{'未設定' if not shares else f'{lots} 張（{shares:,} 股）'}",
             f"均價：{'未設定' if cost is None else f'{cost} 元'}",
             f"停損：{'未設定' if stop is None else f'{stop} 元{_pct(stop)}'}",
             f"目標一：{'未設定' if t1 is None else f'{t1} 元{_pct(t1)}'}",
             f"目標二：{'未設定' if t2 is None else f'{t2} 元{_pct(t2)}'}",
             "\n輸入「確認」開始監控，或「重新輸入」重來。",
+            "\n📝 可直接修改欄位：",
+            "修改股票 台積電 ／ 修改持股 5",
+            "修改均價 62 ／ 修改停損 60",
+            "修改目標 80 ／ 修改目標二 90",
         ]
         return "\n".join(lines)
