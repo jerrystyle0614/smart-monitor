@@ -99,7 +99,12 @@ def handle_message(user_id: str, text: str, store, line,
                 pass
             result = run_analysis_for_user(cfg, swing_cfg, AnalysisMode.PREMARKET)
             if result:
+                from notifier import DiscordNotifier
                 line.reply(reply_token, f"{result['title']}\n\n{result['message']}")
+                DiscordNotifier().send(result["title"], result["message"], result["color"])
+                for alert in result["alerts"]:
+                    line.push(user_id, f"{alert.title}\n\n{alert.message}")
+                    DiscordNotifier().send(alert.title, alert.message, alert.color)
             else:
                 line.reply(reply_token, "⚠️ 分析失敗，請確認股票代號是否正確。")
             return
@@ -442,10 +447,11 @@ def _handle_update(user_id: str, text: str, field: str,
 
 
 def _push_analysis_once(user_id: str, cfg: dict, line) -> None:
-    """確認監控後立即推播一次盤前分析，讓使用者馬上看到當前技術面。
+    """確認監控後立即推播一次盤前分析到 LINE + Discord。
     失敗只印警告，不影響主流程。"""
     import json as _json
     from bot.analysis_runner import run_analysis_for_user, AnalysisMode
+    from notifier import DiscordNotifier
     try:
         swing_cfg = {}
         try:
@@ -455,8 +461,11 @@ def _push_analysis_once(user_id: str, cfg: dict, line) -> None:
             pass
         result = run_analysis_for_user(cfg, swing_cfg, AnalysisMode.PREMARKET)
         if result:
+            discord = DiscordNotifier()
             line.push(user_id, f"{result['title']}\n\n{result['message']}")
+            discord.send(result["title"], result["message"], result["color"])
             for alert in result["alerts"]:
                 line.push(user_id, f"{alert.title}\n\n{alert.message}")
+                discord.send(alert.title, alert.message, alert.color)
     except Exception as e:
         print(f"[handlers] 確認後分析推播失敗：{e}")
