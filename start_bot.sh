@@ -13,6 +13,7 @@ TUNNEL_PID=$!
 
 echo "[Smart Monitor Bot] 啟動 webhook server on port 8000..."
 export CLEAR_ON_START=1
+export FORCE_TRADING_HOURS=1
 python3 -m uvicorn bot.server:app --port 8000
 
 # uvicorn 結束後一併關閉 tunnel

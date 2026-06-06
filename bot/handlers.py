@@ -86,6 +86,23 @@ def handle_message(user_id: str, text: str, store, line,
             # 修改目標一價格
             _handle_update(user_id, text, "target_stage_1", reply_token, store, line)
             return
+        if text in ("測試分析", "test"):
+            # 立即觸發一次盤前分析，用於測試（不受交易時段限制）
+            from bot.analysis_runner import run_analysis_for_user, AnalysisMode
+            import json as _json
+            cfg = store.get_config(user_id)
+            swing_cfg = {}
+            try:
+                with open("config.json", encoding="utf-8") as f:
+                    swing_cfg = _json.load(f)
+            except Exception:
+                pass
+            result = run_analysis_for_user(cfg, swing_cfg, AnalysisMode.PREMARKET)
+            if result:
+                line.reply(reply_token, f"{result['title']}\n\n{result['message']}")
+            else:
+                line.reply(reply_token, "⚠️ 分析失敗，請確認股票代號是否正確。")
+            return
         # 其他訊息一律回覆操作說明
         line.reply(reply_token, HELP_MSG)
         return

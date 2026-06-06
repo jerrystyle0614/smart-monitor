@@ -25,7 +25,10 @@ _ANALYSIS_TIMES = [
 
 
 def is_trading_hours() -> bool:
-    """判斷現在是否為台股交易時段（週一到週五 09:00–13:30 UTC+8）"""
+    """判斷現在是否為台股交易時段（週一到週五 09:00–13:30 UTC+8）。
+    設定 FORCE_TRADING_HOURS=1 可在測試時強制視為交易時段。"""
+    if os.environ.get("FORCE_TRADING_HOURS") == "1":
+        return True
     now = datetime.datetime.now(_TZ_OFFSET)
     if now.weekday() >= 5:
         return False
