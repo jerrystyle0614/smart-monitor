@@ -328,12 +328,7 @@ def _resolve_stock(value_str: str) -> Optional[dict]:
     if value_str in _STOCK_MAP:
         return {"stock_id": _STOCK_MAP[value_str], "stock_name": value_str}
 
-    # 最後嘗試部分名稱比對（輸入的字是名稱的子字串）
-    for name, symbol in _STOCK_MAP.items():
-        if value_str in name:
-            print(f"[_resolve_stock] 部分比對：{value_str} → {symbol} {name}")
-            return {"stock_id": symbol, "stock_name": name}
-
+    # 完全比對找不到，回傳 None（不做部分比對，避免誤命中不相關股票）
     print(f"[_resolve_stock] 找不到：{value_str}")
     return None
 

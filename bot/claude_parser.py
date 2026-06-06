@@ -208,36 +208,29 @@ def parse_monitor_intent(text: str) -> dict:
 
 
 def _verify_stock(parsed: dict) -> dict:
-    """用 Fugle 對照表驗證並修正 stock_id / stock_name。"""
+    """
+    用 Fugle 對照表驗證 stock_id。
+    規則：
+    1. stock_id 在對照表中存在 → 保留代號和使用者輸入的名稱（不覆蓋）
+    2. stock_id 不在對照表，但名稱完全吻合 → 補上正確代號
+    3. 其他情況 → 保留原值，讓使用者自行確認或修改
+    注意：不做部分名稱比對，避免「事欣」誤命中「新唐」等不相關股票
+    """
     stock_id = parsed.get("stock_id")
     stock_name = parsed.get("stock_name")
     reverse_map = {v: k for k, v in _STOCK_MAP.items()}
 
-    # 代號存在且對應名稱正確 → 不動
+    # 代號在 Fugle 對照表中存在 → 代號正確，保留使用者輸入的名稱不覆蓋
     if stock_id and stock_id in reverse_map:
-        fugle_name = reverse_map[stock_id]
-        if stock_name and stock_name != fugle_name:
-            print(f"[verify_stock] 名稱修正：{stock_name} → {fugle_name}")
-        parsed["stock_name"] = fugle_name
+        print(f"[verify_stock] 代號 {stock_id} 已驗證")
         return parsed
 
-    # 代號不存在或為 null → 用名稱查代號
+    # 代號不存在或為 null，且名稱完全吻合 → 補上代號
     if stock_name and stock_name in _STOCK_MAP:
         parsed["stock_id"] = _STOCK_MAP[stock_name]
-        print(f"[verify_stock] 用名稱查代號：{stock_name} → {parsed['stock_id']}")
+        print(f"[verify_stock] 用名稱補代號：{stock_name} → {parsed['stock_id']}")
         return parsed
 
-    # 部分名稱比對
-    if stock_name:
-        for name, symbol in _STOCK_MAP.items():
-            if stock_name in name:
-                parsed["stock_id"] = symbol
-                parsed["stock_name"] = name
-                print(f"[verify_stock] 部分比對：{stock_name} → {symbol} {name}")
-                return parsed
-
-    # 完全找不到，設為 null 讓使用者手動補填
-    if stock_id or stock_name:
-        print(f"[verify_stock] 找不到：{stock_id} {stock_name}，設為 null")
-        parsed["stock_id"] = None
+    # 找不到，保留原值讓使用者確認（不強制設為 null）
+    print(f"[verify_stock] 無法驗證：{stock_id} {stock_name}，保留原值")
     return parsed
