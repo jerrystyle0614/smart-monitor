@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.smartmonitor.analyze</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/jerry/Projects/Personal/experiments/smart-monitor/analyze.py</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FUGLE_API_KEY</key>
+    <string>N2JiZmUwYjktZjYzOC00YTU1LTliNTQtOTdhMjQ0MTdmZmFkIDVlYzdjMTI3LTU3M2QtNGZmYS1hM2UyLWFmYWFlZmRjZWQ5Ng==</string>
+    <key>DISCORD_WEBHOOK_URL</key>
+    <string>https://discord.com/api/webhooks/1511784822773776569/c6sk8Pey0xXxcLUUe8JiYHYgDaGECz7mZ1IXdqNIh1MKZjars6cbmtIQIq8cfmPb4Uoa</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key><integer>8</integer>
+      <key>Minute</key><integer>30</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>13</integer>
+      <key>Minute</key><integer>35</integer>
+    </dict>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/jerry/Projects/Personal/experiments/smart-monitor</string>
+  <key>StandardOutPath</key>
+  <string>/tmp/smartmonitor-analyze.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/smartmonitor-analyze-err.log</string>
+</dict>
+</plist>
