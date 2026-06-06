@@ -121,6 +121,8 @@ def handle_message(user_id: str, text: str, store, line,
             line.reply(reply_token,
                        f"✅ 已開始監控 {cfg.get('stock_id','')} {cfg.get('stock_name','')}，"
                        f"條件達成時會通知你。\n\n可用指令：狀態 ／ 修改停損 X ／ 停止")
+            # 確認後立即推播一次盤前分析，讓使用者馬上看到當前技術面
+            _push_analysis_once(user_id, cfg, line)
         elif text in ("重新輸入", "cancel", "取消"):
             # 使用者取消，回到 IDLE 重新輸入
             store.set_state(user_id, "IDLE")
@@ -437,3 +439,24 @@ def _handle_update(user_id: str, text: str, field: str,
                    f"可用指令：狀態 ／ 修改停損 X ／ 修改目標 X ／ 停止")
     except (ValueError, IndexError):
         line.reply(reply_token, "格式錯誤，請輸入如：修改停損 62")
+
+
+def _push_analysis_once(user_id: str, cfg: dict, line) -> None:
+    """確認監控後立即推播一次盤前分析，讓使用者馬上看到當前技術面。
+    失敗只印警告，不影響主流程。"""
+    import json as _json
+    from bot.analysis_runner import run_analysis_for_user, AnalysisMode
+    try:
+        swing_cfg = {}
+        try:
+            with open("config.json", encoding="utf-8") as f:
+                swing_cfg = _json.load(f)
+        except Exception:
+            pass
+        result = run_analysis_for_user(cfg, swing_cfg, AnalysisMode.PREMARKET)
+        if result:
+            line.push(user_id, f"{result['title']}\n\n{result['message']}")
+            for alert in result["alerts"]:
+                line.push(user_id, f"{alert.title}\n\n{alert.message}")
+    except Exception as e:
+        print(f"[handlers] 確認後分析推播失敗：{e}")
