@@ -3,6 +3,7 @@ monitor_engine.py — 背景監控引擎
 每 30 秒輪詢所有 MONITORING 使用者的股價，條件觸發時推播 LINE + Discord
 """
 
+import json
 import threading
 import time
 import os
@@ -15,6 +16,12 @@ POLL_INTERVAL_SEC = 30
 _MARKET_OPEN  = datetime.time(9, 0)
 _MARKET_CLOSE = datetime.time(13, 30)
 _TZ_OFFSET    = datetime.timezone(datetime.timedelta(hours=8))
+
+# 每日分析推播的觸發時間（UTC+8）
+_ANALYSIS_TIMES = [
+    datetime.time(8, 30),   # 盤前
+    datetime.time(13, 35),  # 盤後
+]
 
 
 def is_trading_hours() -> bool:
@@ -64,6 +71,7 @@ class MonitorEngine:
         self._discord = discord
         self._running = False
         self._thread = None
+        self._analysis_fired = set()  # 記錄今日已觸發的分析，格式："YYYY-MM-DD HH:MM"
 
     def start(self):
         """啟動背景監控執行緒，若已在執行中則略過（防止重複啟動）"""
@@ -81,6 +89,52 @@ class MonitorEngine:
             self._thread.join(timeout=35)
         print("[monitor] 背景監控引擎已停止")
 
+    def _should_run_analysis(self):
+        """
+        判斷現在是否應觸發分析推播。
+        回傳 (should_run, mode, fire_key)
+        """
+        from bot.analysis_runner import AnalysisMode
+        now = datetime.datetime.now(_TZ_OFFSET)
+        for t in _ANALYSIS_TIMES:
+            fire_key = f"{now.strftime('%Y-%m-%d')} {t.strftime('%H:%M')}"
+            window = abs((now.hour * 60 + now.minute) - (t.hour * 60 + t.minute))
+            if window <= 2 and fire_key not in self._analysis_fired:
+                mode = AnalysisMode.PREMARKET if t == datetime.time(8, 30) else AnalysisMode.POSTMARKET
+                return True, mode, fire_key
+        return False, None, ""
+
+    def _run_analysis_all(self, mode) -> None:
+        """對所有 MONITORING 使用者執行波段分析並推播"""
+        from bot.analysis_runner import run_analysis_for_user
+        users = self._store.get_all_monitoring_users()
+        if not users:
+            return
+
+        swing_cfg = {}
+        try:
+            with open("config.json", encoding="utf-8") as f:
+                swing_cfg = json.load(f)
+        except Exception:
+            pass
+
+        mode_label = "盤前" if "PREMARKET" in str(mode) else "盤後"
+        print(f"[monitor] 執行{mode_label}分析，共 {len(users)} 位使用者")
+
+        for uid in users:
+            try:
+                user_cfg = self._store.get_config(uid)
+                result = run_analysis_for_user(user_cfg, swing_cfg, mode)
+                if result is None:
+                    continue
+                self._line.push(uid, f"{result['title']}\n\n{result['message']}")
+                self._discord.send(result["title"], result["message"], result["color"])
+                for alert in result["alerts"]:
+                    self._line.push(uid, f"{alert.title}\n\n{alert.message}")
+                    self._discord.send(alert.title, alert.message, alert.color)
+            except Exception as e:
+                print(f"[monitor] 分析推播失敗 uid={uid}：{e}")
+
     def _loop(self):
         """主迴圈：交易時段每 30 秒掃描一次；非交易時段休眠到下次開盤"""
         while self._running:
@@ -89,6 +143,13 @@ class MonitorEngine:
                 print(f"[monitor] 非交易時段，休眠 {int(secs // 60)} 分鐘至下次開盤")
                 self._sleep(secs)
                 continue
+
+            # 檢查是否到達分析推播時間（08:30 或 13:35 ±2 分鐘）
+            should_run, mode, fire_key = self._should_run_analysis()
+            if should_run:
+                self._analysis_fired.add(fire_key)
+                self._run_analysis_all(mode)
+
             try:
                 self._scan_all()
             except Exception as e:
