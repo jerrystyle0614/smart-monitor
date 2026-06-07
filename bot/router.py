@@ -8,22 +8,26 @@ from typing import Optional, Dict, List
 from bot.services.stock_monitor import StockMonitorService
 from bot.services.pre_market import PreMarketService
 from bot.services.post_market import PostMarketService
+from bot.services.stock_picker import StockPickerService
 
 
 SERVICE_PERMISSIONS = {
     "stock_monitor": ["free", "basic", "pro"],
     "pre_market":    ["basic", "pro"],
     "post_market":   ["basic", "pro"],
+    "stock_picker":  ["pro"],
 }
 
 _ADD_STOCK = StockMonitorService()
 _PRE_MARKET = PreMarketService()
 _POST_MARKET = PostMarketService()
+_STOCK_PICKER = StockPickerService()
 
 _SERVICE_MAP = {
     "stock_monitor": _ADD_STOCK,
     "pre_market": _PRE_MARKET,
     "post_market": _POST_MARKET,
+    "stock_picker": _STOCK_PICKER,
 }
 
 
@@ -83,7 +87,7 @@ def handle_message(uid, text, store, line, reply_token):
         return
 
     # 主菜單路由
-    if text in ("1", "2", "3"):
+    if text in ("1", "2", "3", "4"):
         _handle_menu(uid, text, store, line)
     elif text in ("狀態", "status"):
         _show_watchlist(uid, store, line)
@@ -109,13 +113,14 @@ def _route_to_service(uid, text, service_name, store, line, reply_token):
 
 def _handle_menu(uid, choice, store, line):
     # type: (str, str, object, object) -> None
-    """處理主菜單選擇 (1/2/3)"""
+    """處理主菜單選擇 (1/2/3/4)"""
     plan = store.get_plan(uid)
 
     service_map = {
         "1": ("stock_monitor", _ADD_STOCK),
         "2": ("pre_market", _PRE_MARKET),
         "3": ("post_market", _POST_MARKET),
+        "4": ("stock_picker", _STOCK_PICKER),
     }
 
     service_name, service = service_map.get(choice, (None, None))
@@ -126,10 +131,16 @@ def _handle_menu(uid, choice, store, line):
     # 檢查權限
     allowed_plans = SERVICE_PERMISSIONS.get(service_name, [])
     if plan not in allowed_plans:
-        line.reply(
-            "⚠️ 此功能需要升級方案才能使用。\n"
-            "請聯絡管理員了解升級方式。"
-        )
+        if service_name == "stock_picker":
+            line.reply(
+                "⚠️ 選股推薦為 pro 方案專屬功能。\n"
+                "請聯絡管理員了解升級方式。"
+            )
+        else:
+            line.reply(
+                "⚠️ 此功能需要升級方案才能使用。\n"
+                "請聯絡管理員了解升級方式。"
+            )
         return
 
     # 啟動服務
@@ -198,6 +209,9 @@ def _show_menu(uid, store, line):
     if plan in ("basic", "pro"):
         menu += "2️⃣ 盤前分析\n"
         menu += "3️⃣ 盤後分析\n"
+
+    if plan == "pro":
+        menu += "4️⃣ 選股推薦\n"
 
     menu += "\n輸入數字選擇，或輸入『狀態』查看目前監控\n"
     menu += "━━━━━━━━━━━━━━━━━━"

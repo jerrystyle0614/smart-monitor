@@ -32,6 +32,7 @@ _DEFAULT_STATE = {
     "edit_index": None,
     "msg_timestamps": [],
     "cooldown_blocked_until": 0,
+    "subscriptions": {},
 }
 
 _DEFAULT_PROFILE = {
@@ -295,3 +296,23 @@ class UserStore:
             stocks[stock_index]["alerts_fired"] = {"stop": False, "target1": False}
         stocks[stock_index]["alerts_fired"][alert_key] = value
         self._save_watchlist_raw(uid, wl_data)
+
+    # ------------------------------------------------------------------
+    # Subscriptions — service opt-in/out
+    # ------------------------------------------------------------------
+
+    def get_subscription(self, uid, service_name):
+        # type: (str, str) -> bool
+        """取得訂閱狀態（預設 False）"""
+        state = self._load_state(uid)
+        subscriptions = state.get("subscriptions", {})
+        return subscriptions.get(service_name, False)
+
+    def set_subscription(self, uid, service_name, subscribed):
+        # type: (str, str, bool) -> None
+        """設定訂閱狀態"""
+        state = self._load_state(uid)
+        if "subscriptions" not in state:
+            state["subscriptions"] = {}
+        state["subscriptions"][service_name] = subscribed
+        self._save_state(uid, state)
