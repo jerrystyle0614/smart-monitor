@@ -92,9 +92,9 @@ class TestFinMindAPIIntegration:
 class TestStockPickerPipeline:
     """完整選股流程整合測試（使用 Mock）"""
 
-    def test_full_pipeline_fundamental_to_technical(self):
+    @patch("bot.stock_picker.fundamental_strategy.requests.get")
+    def test_full_pipeline_fundamental_to_technical(self, mock_get):
         """完整流程：從籌碼面到技術面篩選"""
-        mock_exchange = MagicMock()
         mock_fugle = MagicMock()
 
         # 股票清單
@@ -104,12 +104,18 @@ class TestStockPickerPipeline:
             {"stock_id": "2303", "stock_name": "聯電"},
         ]
 
-        # 融資融券正常（增幅 < 5%）
-        mock_exchange.get_margin_status.return_value = {
-            "margin_balance": 5000000,
-            "short_balance": 1000000,
-            "margin_increase_pct": 2.0,
+        # Mock FinMind API 返回融資增幅 < 5%
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [{
+                "MarginShortSalesCurrentDayBalance": 5000000,
+                "date": "2026-06-07"
+            }, {
+                "MarginShortSalesCurrentDayBalance": 4900000,
+                "date": "2026-06-06"
+            }]
         }
+        mock_get.return_value = mock_response
 
         # 技術面模擬
         mock_fugle.load_stock_map.return_value = {
@@ -124,11 +130,9 @@ class TestStockPickerPipeline:
         })
         mock_fugle.fetch_candles.return_value = df
 
-        # 建立策略和引擎（禁用三大法人篩選，因為 mock 沒有實作）
+        # 建立策略和引擎
         fundamental = FundamentalStrategy(
-            mock_exchange,
-            lambda: stock_list,
-            use_three_major=False,
+            stock_list_provider=lambda: stock_list,
             margin_increase_threshold=5.0
         )
         technical = TechnicalStrategy(mock_fugle)
@@ -139,8 +143,6 @@ class TestStockPickerPipeline:
 
         # 應該有交集結果
         assert isinstance(result, list)
-        # 由於都通過條件，應該有結果
-        assert len(result) >= 0
 
     def test_engine_intersection_logic(self):
         """驗證 StockPickerEngine 的交集邏輯"""

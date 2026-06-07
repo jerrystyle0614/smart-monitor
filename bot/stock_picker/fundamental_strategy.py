@@ -1,46 +1,41 @@
 """
 fundamental_strategy.py — 籌碼面篩選策略
-篩選條件：三大法人買賣超（TEJ）+ 融資餘額變化（FinMind）
+篩選條件：融資餘額增幅（FinMind）
 """
 
-from typing import List
+import os
+from typing import List, Optional, Dict, Any
+import requests
 
 from bot.stock_picker.base import Stock, Strategy
 
 
 class FundamentalStrategy(Strategy):
-    """籌碼面策略：三大法人 + 融資餘額篩選"""
+    """籌碼面策略：融資餘額篩選"""
 
     def __init__(
         self,
-        exchange_client,
-        stock_list_provider,
-        use_three_major: bool = True,
-        consecutive_buy_days: int = 1,
+        finmind_client: Optional[Any] = None,
+        stock_list_provider: Optional[callable] = None,
         margin_increase_threshold: float = 5.0,
     ):
         """
         Args:
-            exchange_client: ExchangeClient instance
-            stock_list_provider: callable that returns stock list
-            use_three_major: 是否優先使用三大法人篩選（如果 TEJ 可用）
-            consecutive_buy_days: 三大法人連續買超天數（預設 1 天）
+            finmind_client: FinMind API 客戶端（若不提供則自動初始化）
+            stock_list_provider: 取得股票清單的函數
             margin_increase_threshold: 融資增幅閾值（%）
         """
         self.name = "fundamental"
-        self.exchange_client = exchange_client
+        self.finmind_client = finmind_client
         self.stock_list_provider = stock_list_provider
-        self.use_three_major = use_three_major
-        self.consecutive_buy_days = consecutive_buy_days
         self.margin_increase_threshold = margin_increase_threshold
+        self.finmind_base = "https://api.finmindtrade.com/api/v4"
+        self.finmind_api_key = os.environ.get("FINMIND_API_KEY", "")
 
     def scan(self) -> List[Stock]:
         """
         掃描符合籌碼面條件的股票。
-
-        優先邏輯：
-        1. 如果 TEJ 可用：篩選三大法人連續買超 + 融資增幅穩定
-        2. 如果 TEJ 不可用：單純篩選融資增幅穩定
+        篩選條件：融資餘額日增幅 < threshold（表示籌碼相對穩定）
         """
         try:
             all_stocks = self.stock_list_provider()
@@ -60,14 +55,8 @@ class FundamentalStrategy(Strategy):
             if not stock_id:
                 continue
 
-            # 條件 1: 三大法人買賣超（可選，取決於 TEJ 可用性）
-            if self.use_three_major:
-                buyers = self.exchange_client.get_three_major_buyers(stock_id)
-                if not buyers or buyers.get("consecutive_buy_days", 0) < self.consecutive_buy_days:
-                    continue
-
-            # 條件 2: 融資餘額增幅穩定
-            margin = self.exchange_client.get_margin_status(stock_id)
+            # 檢查融資餘額增幅
+            margin = self._get_margin_status(stock_id)
             if not margin:
                 continue
 
@@ -75,7 +64,47 @@ class FundamentalStrategy(Strategy):
             if margin_increase_pct >= self.margin_increase_threshold:
                 continue
 
-            # 通過所有條件
+            # 通過篩選
             qualified.append(Stock(stock_id=stock_id, stock_name=stock_name))
 
         return qualified
+
+    def _get_margin_status(self, stock_id: str) -> Optional[Dict[str, Any]]:
+        """從 FinMind 取得融資餘額資料"""
+        try:
+            url = f"{self.finmind_base}/data"
+            params = {
+                "dataset": "TaiwanDailyShortSaleBalances",
+                "data_id": stock_id,
+                "api_key": self.finmind_api_key,
+                "start_date": "2026-06-01",
+            }
+            resp = requests.get(url, params=params, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if not data.get("data"):
+                return None
+
+            records = data.get("data", [])
+            if len(records) < 1:
+                return None
+
+            current = records[0]
+            margin_balance = float(current.get("MarginShortSalesCurrentDayBalance", 0))
+
+            # 計算增幅
+            margin_increase_pct = 0
+            if len(records) > 1:
+                previous = records[1]
+                margin_previous = float(previous.get("MarginShortSalesCurrentDayBalance", 0))
+                if margin_previous > 0:
+                    margin_increase_pct = (margin_balance - margin_previous) / margin_previous * 100
+
+            return {
+                "margin_balance": margin_balance,
+                "margin_increase_pct": margin_increase_pct,
+                "date": current.get("date"),
+            }
+        except Exception as e:
+            return None

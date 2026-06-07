@@ -1,0 +1,9 @@
+{
+  "timestamp": 1780821609.021069,
+  "stock_id": "2330",
+  "analysis_type": "pre_market",
+  "result": {
+    "technical": "test",
+    "value": 123
+  }
+}

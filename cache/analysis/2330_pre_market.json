@@ -1,0 +1,23 @@
+{
+  "timestamp": 1780818787.8780532,
+  "stock_id": "2330",
+  "analysis_type": "pre_market",
+  "result": {
+    "technical": {
+      "trend": "上升",
+      "support": 910,
+      "summary": "技術面好轉"
+    },
+    "entry_exit": {
+      "trend": "上升",
+      "support": 910,
+      "summary": "技術面好轉"
+    },
+    "risks": {
+      "trend": "上升",
+      "support": 910,
+      "summary": "技術面好轉"
+    },
+    "timestamp": "2026-06-07T15:53:07.878046"
+  }
+}
