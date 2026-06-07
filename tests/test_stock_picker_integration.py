@@ -94,25 +94,18 @@ class TestStockPickerPipeline:
 
     def test_full_pipeline_fundamental_to_technical(self):
         """完整流程：從籌碼面到技術面篩選"""
-        mock_finmind = MagicMock()
+        mock_exchange = MagicMock()
         mock_fugle = MagicMock()
 
-        # 籌碼面返回 2 支股票
-        mock_finmind.get_all_stocks_basic.return_value = [
+        # 股票清單
+        stock_list = [
             {"stock_id": "2330", "stock_name": "台積電"},
             {"stock_id": "2454", "stock_name": "聯發科"},
             {"stock_id": "2303", "stock_name": "聯電"},
         ]
 
-        # 三大法人數據
-        mock_finmind.get_three_major_buyers.return_value = {
-            "consecutive_buy_days": 3,
-            "total_buy": 10000000,
-            "total_sell": 1000000,
-        }
-
-        # 融資融券正常
-        mock_finmind.get_margin_status.return_value = {
+        # 融資融券正常（增幅 < 5%）
+        mock_exchange.get_margin_status.return_value = {
             "margin_balance": 5000000,
             "short_balance": 1000000,
             "margin_increase_pct": 2.0,
@@ -132,7 +125,11 @@ class TestStockPickerPipeline:
         mock_fugle.fetch_candles.return_value = df
 
         # 建立策略和引擎
-        fundamental = FundamentalStrategy(mock_finmind)
+        fundamental = FundamentalStrategy(
+            mock_exchange,
+            lambda: stock_list,
+            margin_increase_threshold=5.0
+        )
         technical = TechnicalStrategy(mock_fugle)
         engine = StockPickerEngine([fundamental, technical])
 
