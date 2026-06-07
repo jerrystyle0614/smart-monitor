@@ -52,9 +52,19 @@ def handle_follow(uid, store, line):
     line.push(uid,
         "👋 歡迎使用 Smart Monitor！\n\n"
         "我是您的台股投資小助手。\n"
-        "提供股票監控、盤前/盤後分析等功能。"
+        "提供股票監控、盤前/盤後分析、選股推薦等功能。"
     )
-    line.push(uid, "輸入『狀態』查看監控清單，或輸入數字選擇服務。")
+    line.push(uid,
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📊 Smart Monitor\n\n"
+        "請選擇服務：\n"
+        "1️⃣ 股票監控\n"
+        "2️⃣ 盤前分析\n"
+        "3️⃣ 盤後分析\n"
+        "4️⃣ 選股推薦\n\n"
+        "輸入數字選擇，或輸入『狀態』查看目前監控\n"
+        "━━━━━━━━━━━━━━━━━━"
+    )
 
 
 def handle_message(uid, text, store, line, reply_token):

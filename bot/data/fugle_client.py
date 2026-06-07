@@ -1,6 +1,7 @@
 """
 fugle_client.py — Fugle API 統一封裝
 整合所有 Fugle REST API 呼叫，提供清潔的介面
+當 Fugle API 不可用時，回退到 mock 資料（測試用）
 """
 
 import os
@@ -8,6 +9,14 @@ from typing import Optional, Dict
 
 import requests
 import pandas as pd
+
+try:
+    from mock_stocks import MOCK_STOCKS, MOCK_QUOTES
+    MOCK_AVAILABLE = True
+except ImportError:
+    MOCK_AVAILABLE = False
+    MOCK_STOCKS = {}
+    MOCK_QUOTES = {}
 
 
 class FugleClient:
@@ -40,7 +49,10 @@ class FugleClient:
                 "change_pct": float(quote.get("changePercent", 0)),
             }
         except Exception as e:
-            print(f"[fugle] get_quote {stock_id} 失敗：{e}")
+            print(f"[fugle] get_quote {stock_id} 失敗：{e}，改用 mock 資料")
+            # 回退到 mock 資料
+            if MOCK_AVAILABLE and stock_id in MOCK_QUOTES:
+                return MOCK_QUOTES[stock_id]
             return None
 
     def verify_stock(self, stock_id_or_name: str) -> Optional[Dict]:
@@ -71,6 +83,18 @@ class FugleClient:
         except Exception:
             pass
 
+        # 回退到 mock 資料
+        if MOCK_AVAILABLE:
+            if stock_id_or_name in MOCK_STOCKS:
+                value = MOCK_STOCKS[stock_id_or_name]
+                if isinstance(value, dict):
+                    return value
+                else:
+                    # 是代號，查詢名稱
+                    for name, code in MOCK_STOCKS.items():
+                        if isinstance(code, str) and code == value:
+                            return {"stock_id": code, "stock_name": name}
+
         return None
 
     def fetch_candles(self, stock_id: str, days: int = 60) -> pd.DataFrame:
@@ -93,6 +117,7 @@ class FugleClient:
         """
         載入全市場股票清單（名稱→代號）。
         快取結果避免重複下載。
+        若 Fugle API 失敗，回退到 mock 資料。
         """
         if self._stock_map is not None:
             return self._stock_map
@@ -118,5 +143,14 @@ class FugleClient:
             self._stock_map = {**twse_map, **tpex_map}
             return self._stock_map
         except Exception as e:
-            print(f"[fugle] load_stock_map 失敗：{e}")
+            print(f"[fugle] load_stock_map 失敗：{e}，改用 mock 資料")
+            # 回退到 mock 資料
+            if MOCK_AVAILABLE:
+                mock_map = {}
+                for key, value in MOCK_STOCKS.items():
+                    if isinstance(value, str):
+                        # key 是名稱，value 是代號
+                        mock_map[key] = value
+                self._stock_map = mock_map
+                return self._stock_map
             return {}
