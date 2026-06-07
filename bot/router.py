@@ -48,7 +48,7 @@ class ServiceRouter:
 def handle_follow(uid, store, line):
     # type: (str, object, object) -> None
     """處理追蹤事件"""
-    store.set_plan(uid, "free")
+    store.set_plan(uid, "pro")  # 測試時改為 pro 以看到全部功能
     line.push(uid,
         "👋 歡迎使用 Smart Monitor！\n\n"
         "我是您的台股投資小助手。\n"
