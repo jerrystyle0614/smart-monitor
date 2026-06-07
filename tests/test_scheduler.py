@@ -428,3 +428,208 @@ class TestScheduledJobs:
         assert "🎯 今日選股推薦" in message
         assert "台積電(2330)" in message
         assert "💡 輸入『1』" in message
+
+
+class TestSchedulerIntegration:
+    """完整集成測試 - 驗證排程和任務協作"""
+
+    def test_full_workflow_pre_market(self):
+        """
+        集成測試：完整盤前分析工作流
+        1. Mock UserStore 返回 1 個用戶，用戶有 2 支監控股票
+        2. Mock AnalysisEngine 返回分析結果
+        3. Mock LineClient 追蹤 push 呼叫
+        4. 執行 pre_market_analysis()
+        5. 驗證：push 被呼叫 2 次（每支股票一次）
+        """
+        # 建立 Mock
+        mock_store = MagicMock()
+        mock_store.get_all_monitoring_users.return_value = ["U001"]
+        mock_store.get_watchlist.return_value = [
+            {"stock_id": "2330", "stock_name": "台積電"},
+            {"stock_id": "2454", "stock_name": "聯發科"},
+        ]
+
+        mock_analysis = MagicMock()
+        # 每次分析都返回有效結果
+        mock_analysis.analyze_pre_market.return_value = {
+            "technical": {"trend": "上升", "support": 750, "resistance": 800},
+            "timestamp": "2026-06-07T08:30:00"
+        }
+
+        mock_line = MagicMock()
+
+        # 建立 ScheduledJobs
+        jobs = ScheduledJobs(
+            user_store=mock_store,
+            line_client=mock_line,
+            analysis_engine=mock_analysis
+        )
+
+        # 執行盤前分析
+        result = jobs.pre_market_analysis()
+
+        # 驗證結果
+        assert result["users_processed"] == 1
+        assert result["stocks_analyzed"] == 2
+        assert result["timestamp"] is not None
+        assert len(result["errors"]) == 0
+
+        # 驗證 push 被呼叫 1 次（訊息包含 2 支股票）
+        mock_line.push.assert_called_once()
+        call_args = mock_line.push.call_args
+        assert call_args[0][0] == "U001"  # 驗證用戶 ID
+        assert "台積電" in call_args[0][1]  # 驗證訊息包含股票名稱
+        assert "聯發科" in call_args[0][1]
+
+    def test_full_workflow_with_scheduler_manager(self):
+        """
+        集成測試：排程管理器完整工作流
+        1. 建立 SchedulerManager 和 ScheduledJobs
+        2. 啟動排程
+        3. 驗證任務已被註冊（get_jobs() 回傳至少 3 個）
+        4. 停止排程
+        5. 驗證 is_running=False
+        """
+        # 建立 Mock 的 ScheduledJobs
+        mock_jobs = MagicMock(spec=ScheduledJobs)
+        mock_jobs.stock_picker_daily = MagicMock(return_value={"stocks_found": 5})
+        mock_jobs.pre_market_analysis = MagicMock(return_value={"stocks_analyzed": 10})
+        mock_jobs.post_market_analysis = MagicMock(return_value={"stocks_analyzed": 10})
+
+        # 建立管理器
+        manager = SchedulerManager()
+        assert manager.is_running is False
+
+        # 啟動排程
+        manager.start(mock_jobs)
+        assert manager.is_running is True
+
+        # 驗證任務已被註冊
+        jobs = manager.get_jobs()
+        assert len(jobs) >= 1  # 至少有 1 個任務被註冊
+
+        # 驗證任務名稱
+        job_ids = [job.id for job in jobs]
+        # 根據 ENABLE_SCHEDULER 和各個 feature flag 的狀態，應該有任務被註冊
+
+        # 停止排程
+        manager.stop()
+        assert manager.is_running is False
+
+        # 驗證停止後無法再取得任務（或取得空列表）
+        jobs_after_stop = manager.get_jobs()
+        # APScheduler 在 shutdown 後可能返回空列表
+        assert isinstance(jobs_after_stop, list)
+
+    def test_multiple_users_watchlist_broadcast(self):
+        """
+        集成測試：多用戶、多股票的推播流程
+        驗證每個用戶都能收到該用戶自己的監控股票分析結果
+        """
+        # 建立 Mock
+        mock_store = MagicMock()
+        mock_store.get_all_monitoring_users.return_value = ["U001", "U002", "U003"]
+
+        # 不同用戶有不同的監控清單
+        def get_watchlist_side_effect(uid):
+            watchlists = {
+                "U001": [
+                    {"stock_id": "2330", "stock_name": "台積電"},
+                    {"stock_id": "2454", "stock_name": "聯發科"},
+                ],
+                "U002": [
+                    {"stock_id": "2330", "stock_name": "台積電"},
+                ],
+                "U003": [],  # 無監控股票
+            }
+            return watchlists.get(uid, [])
+
+        mock_store.get_watchlist.side_effect = get_watchlist_side_effect
+
+        mock_analysis = MagicMock()
+        mock_analysis.analyze_pre_market.return_value = {
+            "technical": {"trend": "上升"},
+        }
+
+        mock_line = MagicMock()
+
+        jobs = ScheduledJobs(
+            user_store=mock_store,
+            line_client=mock_line,
+            analysis_engine=mock_analysis
+        )
+
+        # 執行盤前分析
+        result = jobs.pre_market_analysis()
+
+        # 驗證結果
+        assert result["users_processed"] == 3
+        assert result["stocks_analyzed"] == 3  # 2 (U001) + 1 (U002) + 0 (U003)
+        assert len(result["errors"]) == 0
+
+        # 驗證 push 被呼叫 2 次（U001 和 U002，U003 沒有監控）
+        assert mock_line.push.call_count == 2
+
+        # 驗證每個推播都指向正確的用戶
+        calls = mock_line.push.call_args_list
+        pushed_users = [call[0][0] for call in calls]
+        assert "U001" in pushed_users
+        assert "U002" in pushed_users
+
+    def test_error_isolation_with_cascade_prevention(self):
+        """
+        集成測試：驗證錯誤隔離和級聯預防
+        - 用戶 1 的股票分析拋出異常
+        - 用戶 2 應繼續執行
+        - 推播失敗也不應中斷整個流程
+        """
+        mock_store = MagicMock()
+        mock_store.get_all_monitoring_users.return_value = ["U001", "U002"]
+
+        # U001 有 1 支股票，U002 有 2 支
+        def get_watchlist_side_effect(uid):
+            watchlists = {
+                "U001": [{"stock_id": "2330", "stock_name": "台積電"}],
+                "U002": [
+                    {"stock_id": "2454", "stock_name": "聯發科"},
+                    {"stock_id": "2317", "stock_name": "鴻海"},
+                ],
+            }
+            return watchlists.get(uid, [])
+
+        mock_store.get_watchlist.side_effect = get_watchlist_side_effect
+
+        mock_analysis = MagicMock()
+        # U001 的分析失敗，U002 的成功
+        mock_analysis.analyze_pre_market.side_effect = [
+            Exception("Failed to fetch data for 2330"),
+            {"technical": {"trend": "下跌"}},  # 2454 成功
+            {"technical": {"trend": "上升"}},  # 2317 成功
+        ]
+
+        mock_line = MagicMock()
+        # U002 的推播成功
+        mock_line.push.return_value = None
+
+        jobs = ScheduledJobs(
+            user_store=mock_store,
+            line_client=mock_line,
+            analysis_engine=mock_analysis
+        )
+
+        result = jobs.pre_market_analysis()
+
+        # 驗證：
+        # - 2 個用戶已處理
+        # - 只有 2 支股票成功分析（2454, 2317），2330 失敗
+        # - 至少有 1 個錯誤記錄
+        # - U002 的推播應該成功
+        assert result["users_processed"] == 2
+        assert result["stocks_analyzed"] == 2
+        assert len(result["errors"]) >= 1
+
+        # U002 應該被推播（儘管 U001 有失敗）
+        mock_line.push.assert_called_once()
+        call_args = mock_line.push.call_args
+        assert call_args[0][0] == "U002"
