@@ -7,18 +7,20 @@ from unittest.mock import MagicMock, patch
 from bot.monitor_engine import MonitorEngine
 
 
-def _make_store(uid="u1", config=None, stop_fired=False, target_fired=False):
+def _make_store(uid="u1", watchlist=None, stop_fired=False, target_fired=False):
     store = MagicMock()
     store.get_all_monitoring_users.return_value = [uid]
-    store.get_config.return_value = config or {
-        "stock_id": "3312",
-        "stock_name": "弘憶",
-        "total_shares": 3000,
-        "cost_price": 64.0,
-        "stop_loss_moving": 63.0,
-        "target_stage_1": 75.0,
-    }
-    store.get_alert_fired.side_effect = lambda u, k: (
+    store.get_watchlist.return_value = watchlist if watchlist is not None else [
+        {
+            "stock_id": "3312",
+            "stock_name": "弘憶",
+            "total_shares": "3000",
+            "cost_price": "64.0",
+            "stop_loss_moving": "63.0",
+            "target_stage_1": "75.0",
+        }
+    ]
+    store.get_alert_fired.side_effect = lambda u, idx, k: (
         stop_fired if k == "stop" else (target_fired if k == "target1" else False)
     )
     return store
@@ -62,11 +64,16 @@ def test_no_duplicate_alert():
 
 def test_no_alert_when_stop_loss_not_set():
     """未設定停損時，股價再低也不觸發停損警報"""
-    store = _make_store(config={
-        "stock_id": "3312", "stock_name": "弘憶",
-        "total_shares": 3000, "cost_price": 64.0,
-        "stop_loss_moving": None, "target_stage_1": 75.0,
-    })
+    store = _make_store(watchlist=[
+        {
+            "stock_id": "3312",
+            "stock_name": "弘憶",
+            "total_shares": "3000",
+            "cost_price": "64.0",
+            "stop_loss_moving": None,
+            "target_stage_1": "75.0",
+        }
+    ])
     engine = MonitorEngine(store, MagicMock(), MagicMock())
     with patch("bot.monitor_engine.fetch_price", return_value=50.0):
         alerts = engine._check_user("u1")
@@ -79,10 +86,10 @@ def test_dispatch_sends_line_and_discord():
     line = MagicMock()
     discord = MagicMock()
     engine = MonitorEngine(store, line, discord)
-    engine._dispatch("u1", [{"title": "停損觸發", "message": "跌破 63", "color": 0xE74C3C, "fired_key": "stop"}])
+    engine._dispatch("u1", [{"title": "停損觸發", "message": "跌破 63", "color": 0xE74C3C, "fired_key": "stop", "stock_index": 0}])
     line.push.assert_called_once_with("u1", "停損觸發\n\n跌破 63")
     discord.send.assert_called_once_with("停損觸發", "跌破 63", 0xE74C3C)
-    store.set_alert_fired.assert_called_once_with("u1", "stop", True)
+    store.set_alert_fired.assert_called_once_with("u1", 0, "stop", True)
 
 
 def test_no_alert_when_price_unavailable():

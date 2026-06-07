@@ -179,16 +179,41 @@ class MonitorEngine:
                 print(f"[monitor] 處理使用者 {uid} 失敗：{e}")
 
     def _check_user(self, uid):
-        """查詢股價並比對條件，回傳觸發的警報列表"""
-        cfg = self._store.get_config(uid)
-        if not cfg:
+        """查詢所有監控股票的股價並比對條件，回傳觸發的警報列表"""
+        watchlist = self._store.get_watchlist(uid)
+        if not watchlist:
             return []
 
-        stock_id = cfg.get("stock_id")
-        stock_name = cfg.get("stock_name", "")
-        cost = cfg.get("cost_price")
-        stop = cfg.get("stop_loss_moving")
-        target1 = cfg.get("target_stage_1")
+        alerts = []
+        for stock_index, stock in enumerate(watchlist):
+            stock_alerts = self._check_stock(uid, stock_index, stock)
+            alerts.extend(stock_alerts)
+        return alerts
+
+    def _check_stock(self, uid, stock_index, stock):
+        """查詢單支股票的股價並比對條件，回傳觸發的警報列表"""
+        stock_id = stock.get("stock_id")
+        if not stock_id:
+            return []
+
+        stock_name = stock.get("stock_name", "")
+        cost_raw = stock.get("cost_price")
+        stop_raw = stock.get("stop_loss_moving")
+        target1_raw = stock.get("target_stage_1")
+
+        # 敏感欄位解密後為字串，需轉為 float
+        try:
+            cost = float(cost_raw) if cost_raw is not None else None
+        except (ValueError, TypeError):
+            cost = None
+        try:
+            stop = float(stop_raw) if stop_raw is not None else None
+        except (ValueError, TypeError):
+            stop = None
+        try:
+            target1 = float(target1_raw) if target1_raw is not None else None
+        except (ValueError, TypeError):
+            target1 = None
 
         price = fetch_price(stock_id)
         if price is None:
@@ -200,32 +225,34 @@ class MonitorEngine:
         # 不在此處設定 fired 旗標，由 _dispatch 在推播成功後再設定
         if (stop is not None
                 and price <= stop
-                and not self._store.get_alert_fired(uid, "stop")):
-            pct = f"{(price - cost) / cost * 100:+.2f}%" if cost else ""
+                and not self._store.get_alert_fired(uid, stock_index, "stop")):
+            pct = "{:+.2f}%".format((price - cost) / cost * 100) if cost else ""
             alerts.append({
                 "title": "⚠️ 停損觸發",
                 "message": (
-                    f"【{stock_id} {stock_name}】現價 {price} 元 {pct}\n"
-                    f"已跌破停損價 {stop} 元，建議評估出場。"
-                ),
+                    "【{} {}】現價 {} 元 {}\n"
+                    "已跌破停損價 {} 元，建議評估出場。"
+                ).format(stock_id, stock_name, price, pct, stop),
                 "color": 0xE74C3C,
                 "fired_key": "stop",
+                "stock_index": stock_index,
             })
 
         # 目標一條件：股價 >= 目標一價，且尚未觸發過
         # 不在此處設定 fired 旗標，由 _dispatch 在推播成功後再設定
         if (target1 is not None
                 and price >= target1
-                and not self._store.get_alert_fired(uid, "target1")):
-            pct = f"{(price - cost) / cost * 100:+.2f}%" if cost else ""
+                and not self._store.get_alert_fired(uid, stock_index, "target1")):
+            pct = "{:+.2f}%".format((price - cost) / cost * 100) if cost else ""
             alerts.append({
                 "title": "🎯 目標一達成",
                 "message": (
-                    f"【{stock_id} {stock_name}】現價 {price} 元 {pct}\n"
-                    f"已達目標一 {target1} 元，可考慮獲利了結。"
-                ),
+                    "【{} {}】現價 {} 元 {}\n"
+                    "已達目標一 {} 元，可考慮獲利了結。"
+                ).format(stock_id, stock_name, price, pct, target1),
                 "color": 0x2ECC71,
                 "fired_key": "target1",
+                "stock_index": stock_index,
             })
 
         return alerts
@@ -233,7 +260,8 @@ class MonitorEngine:
     def _dispatch(self, uid, alerts):
         """將警報同時推播到 LINE 和 Discord，推播成功後才設定 fired 旗標"""
         for alert in alerts:
-            self._line.push(uid, f"{alert['title']}\n\n{alert['message']}")
+            self._line.push(uid, "{}\n\n{}".format(alert["title"], alert["message"]))
             self._discord.send(alert["title"], alert["message"], alert["color"])
             # 推播完成後才標記已觸發，確保失敗時下次仍能重送
-            self._store.set_alert_fired(uid, alert["fired_key"], True)
+            stock_index = alert.get("stock_index", 0)
+            self._store.set_alert_fired(uid, stock_index, alert["fired_key"], True)

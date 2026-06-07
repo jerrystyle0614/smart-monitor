@@ -14,10 +14,10 @@ from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException
 from contextlib import asynccontextmanager
 
-from bot.handlers import handle_follow, handle_message
+from bot.router import handle_follow, handle_message
 from bot.line_client import LineClient
 from bot.user_store import UserStore
-from bot.claude_parser import load_stock_map
+from bot.data.fugle_client import FugleClient
 from bot.monitor_engine import MonitorEngine
 from notifier import DiscordNotifier
 
@@ -43,7 +43,13 @@ _engine = None  # 由 lifespan 啟動後賦值
 async def lifespan(app: FastAPI):
     global _engine
     _clear_user_data()
-    load_stock_map()  # 從 Fugle 載入完整股票對照表
+    # 從 Fugle 載入完整股票對照表
+    try:
+        client = FugleClient()
+        client.load_stock_map()
+        print("[startup] Stock map loaded")
+    except Exception as e:
+        print("[startup] Stock map load failed: {}".format(e))
     discord = DiscordNotifier()
     _engine = MonitorEngine(_store, _line, discord)
     _engine.start()
