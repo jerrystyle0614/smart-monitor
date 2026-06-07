@@ -11,7 +11,13 @@ import requests
 
 
 class FinMindClient:
-    """FinMind API 客戶端"""
+    """
+    FinMind API 客戶端
+
+    注意：當前 get_three_major_buyers 和 get_margin_status 返回 API 錯誤
+    原因待確認：dataset 名稱或參數格式可能不符合最新 FinMind API
+    TODO: 驗證正確的 dataset 名稱
+    """
 
     def __init__(self):
         self.api_key = os.environ.get("FINMIND_API_KEY", "")
