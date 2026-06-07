@@ -311,6 +311,37 @@ class TestScheduledJobs:
         assert "📊 盤後分析" in message
         assert "台積電(2330)" in message
 
+    def test_stock_picker_daily_error_handling(self):
+        """單一用戶推播失敗不應影響其他用戶"""
+        mock_store = MagicMock()
+        mock_store.get_all_monitoring_users.return_value = ["U001", "U002"]
+
+        mock_stock1 = MagicMock()
+        mock_stock1.stock_id = "2330"
+        mock_stock1.stock_name = "台積電"
+
+        mock_engine = MagicMock()
+        mock_engine.scan.return_value = [mock_stock1]
+
+        mock_line = MagicMock()
+        # U001 推播失敗，U002 成功
+        mock_line.push.side_effect = [
+            Exception("Push to U001 failed"),
+            None
+        ]
+
+        jobs = ScheduledJobs(
+            user_store=mock_store,
+            line_client=mock_line,
+            stock_picker_engine=mock_engine
+        )
+        result = jobs.stock_picker_daily()
+
+        # 應記錄 U001 的錯誤，但 U002 成功推播
+        assert result["stocks_found"] == 1
+        assert result["users_notified"] == 1
+        assert len(result["errors"]) == 1
+
     def test_format_stock_picker_message(self):
         """測試選股推薦訊息格式化"""
         jobs = ScheduledJobs()
