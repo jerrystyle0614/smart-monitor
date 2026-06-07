@@ -33,6 +33,12 @@ class FinMindClient:
             "latest_data": dict or None
         }
         或 None（失敗）
+
+        API Verification Result (2026-06-07):
+        ✗ TaiwanStockGovernmentBankBuySell: NOT AVAILABLE FOR PER-STOCK QUERY
+        - Dataset exists but does not support stock_id parameter (requires portfolio-level)
+        - Alternative: Try with different dataset name or check premium tier
+        - Current implementation: Returns None (API 400 error)
         """
         try:
             url = f"{self.base_url}/data"
@@ -72,6 +78,7 @@ class FinMindClient:
     def get_margin_status(self, stock_id: str) -> Optional[Dict]:
         """
         取得融資融券狀態。
+        使用 FinMind API: TaiwanDailyShortSaleBalances dataset
         回傳 {
             "margin_balance": float,
             "short_balance": float,
@@ -79,13 +86,19 @@ class FinMindClient:
             "date": str
         }
         或 None（失敗或資料不足）
+
+        API Verification Result (2026-06-07):
+        ✓ TaiwanDailyShortSaleBalances: WORKING
+        - Parameters: data_id (not stock_id), start_date
+        - Returns: MarginShortSalesCurrentDayBalance, SBLShortSalesCurrentDayBalance, etc.
         """
         try:
             url = f"{self.base_url}/data"
             params = {
-                "dataset": "TaiwanStockMarginPurchaseShortSale",
-                "stock_id": stock_id,
+                "dataset": "TaiwanDailyShortSaleBalances",
+                "data_id": stock_id,
                 "api_key": self.api_key,
+                "start_date": "2026-06-01",
             }
             resp = requests.get(url, params=params, timeout=5)
             resp.raise_for_status()
@@ -95,24 +108,28 @@ class FinMindClient:
                 return None
 
             records = data.get("data", [])
-            if len(records) < 2:
+            if len(records) < 1:
                 return None
 
             current = records[0]
-            previous = records[1]
 
-            margin_current = float(current.get("MarginBalance", 0))
-            margin_previous = float(previous.get("MarginBalance", 0))
+            # TaiwanDailyShortSaleBalances 回傳的欄位
+            margin_balance = float(current.get("MarginShortSalesCurrentDayBalance", 0))
+            short_balance = float(current.get("SBLShortSalesCurrentDayBalance", 0))
 
+            # 計算增幅：比對前一天資料
             margin_increase_pct = 0
-            if margin_previous > 0:
-                margin_increase_pct = (margin_current - margin_previous) / margin_previous * 100
+            if len(records) > 1:
+                previous = records[1]
+                margin_previous = float(previous.get("MarginShortSalesCurrentDayBalance", 0))
+                if margin_previous > 0:
+                    margin_increase_pct = (margin_balance - margin_previous) / margin_previous * 100
 
             return {
-                "margin_balance": margin_current,
-                "short_balance": float(current.get("ShortBalance", 0)),
+                "margin_balance": margin_balance,
+                "short_balance": short_balance,
                 "margin_increase_pct": margin_increase_pct,
-                "date": current.get("Date"),
+                "date": current.get("date"),
             }
         except Exception as e:
             print(f"[finmind] get_margin_status {stock_id} 失敗：{e}")
