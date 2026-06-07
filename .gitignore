@@ -4,8 +4,9 @@
 # 使用者資料
 users/
 
-# 文件
-docs/
+# 文件（除了 PHASE_C.md 和其他重要文件）
+docs/*
+!docs/PHASE_C.md
 
 # Python
 __pycache__/
