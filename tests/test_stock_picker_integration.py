@@ -124,10 +124,11 @@ class TestStockPickerPipeline:
         })
         mock_fugle.fetch_candles.return_value = df
 
-        # 建立策略和引擎
+        # 建立策略和引擎（禁用三大法人篩選，因為 mock 沒有實作）
         fundamental = FundamentalStrategy(
             mock_exchange,
             lambda: stock_list,
+            use_three_major=False,
             margin_increase_threshold=5.0
         )
         technical = TechnicalStrategy(mock_fugle)

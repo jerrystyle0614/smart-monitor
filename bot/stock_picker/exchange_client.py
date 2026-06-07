@@ -1,33 +1,102 @@
 """
-exchange_client.py — TWSE/TPEX 融資融券資料與股票清單
-(三大法人資料 TWSE OpenAPI 未提供公開個股端點，暫時略過)
+exchange_client.py — 台股資料統一封裝
+- 股票清單：FinMind TaiwanStockInfo
+- 融資融券：FinMind TaiwanDailyShortSaleBalances
+- 三大法人：TEJ API（試用中）
 """
 
 from typing import Optional, Dict, List
 import os
 import requests
+from datetime import datetime, timedelta
 
 
 class ExchangeClient:
     """
     台股資料統一客戶端
-    - 股票清單來源：Fugle API（已在系統中使用）
-    - 融資融券資料：FinMind API（已驗證可用）
-    - 三大法人：待替代方案（TWSE OpenAPI 不提供個股端點）
+    支援多個資料來源：FinMind（股票清單、融資融券）+ TEJ（三大法人）
     """
 
     def __init__(self):
         self.finmind_api_key = os.environ.get("FINMIND_API_KEY", "")
         self.finmind_base = "https://api.finmindtrade.com/api/v4"
+        self.tej_api_key = os.environ.get("TEJ_API_KEY", "")
+        self.tej_base = "https://api.tej.com.tw"
 
     def get_three_major_buyers(self, stock_id: str, days: int = 3) -> Optional[Dict]:
         """
         取得三大法人買賣超資料。
-        注意：TWSE OpenAPI 未提供個股三大法人查詢端點
-        暫時返回 None，等待替代方案
+        優先嘗試 TEJ API；失敗則返回 None
         """
-        print(f"[exchange_client] {stock_id} 三大法人資料暫不可用（TWSE 無公開個股端點）")
+        if self.tej_api_key:
+            result = self._fetch_tej_three_major(stock_id, days)
+            if result:
+                return result
+
+        print(f"[exchange_client] {stock_id} 三大法人資料暫不可用（TEJ API 驗證中）")
         return None
+
+    def _fetch_tej_three_major(self, stock_id: str, days: int = 3) -> Optional[Dict]:
+        """
+        從 TEJ API 取得三大法人買賣超。
+        端點：/api/v1/stock/{symbol}/institutional
+        """
+        try:
+            # 使用前一個交易日
+            target_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            url = f"{self.tej_base}/api/v1/stock/{stock_id}/institutional"
+            params = {
+                "apikey": self.tej_api_key,
+                "date": target_date,
+            }
+
+            resp = requests.get(url, params=params, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if not data or not data.get("data"):
+                return None
+
+            records = data.get("data", [])
+            if len(records) == 0:
+                return None
+
+            latest = records[0]
+
+            # TEJ 回傳格式：外資買/賣、投信買/賣、自營買/賣
+            foreign_buy = float(latest.get("foreign_buy", 0))
+            foreign_sell = float(latest.get("foreign_sell", 0))
+            invest_buy = float(latest.get("invest_buy", 0))
+            invest_sell = float(latest.get("invest_sell", 0))
+            dealer_buy = float(latest.get("dealer_buy", 0))
+            dealer_sell = float(latest.get("dealer_sell", 0))
+
+            total_buy = foreign_buy + invest_buy + dealer_buy
+            total_sell = foreign_sell + invest_sell + dealer_sell
+
+            net_buy = total_buy - total_sell
+            consecutive_days = 1 if net_buy > 0 else 0
+
+            return {
+                "consecutive_buy_days": consecutive_days,
+                "total_buy": total_buy,
+                "total_sell": total_sell,
+                "latest_data": {
+                    "date": latest.get("date", target_date),
+                    "buy": total_buy,
+                    "sell": total_sell,
+                    "net": net_buy,
+                    "foreign": {"buy": foreign_buy, "sell": foreign_sell},
+                    "invest": {"buy": invest_buy, "sell": invest_sell},
+                    "dealer": {"buy": dealer_buy, "sell": dealer_sell},
+                },
+                "market": "TWSE/TPEX",
+            }
+
+        except Exception as e:
+            print(f"[exchange_client] TEJ 查詢 {stock_id} 失敗：{e}")
+            return None
 
     def get_margin_status(self, stock_id: str) -> Optional[Dict]:
         """
