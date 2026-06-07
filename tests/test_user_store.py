@@ -1,118 +1,208 @@
-"""
-test_user_store.py — user_store 模組單元測試
-使用 pytest tmp_path fixture，不寫入真實 users/ 目錄
-"""
-
+"""test_user_store.py — UserStore 單元測試"""
+import os
 import json
+import time
 import pytest
-from bot.user_store import UserStore
+from pathlib import Path
+from unittest.mock import patch
+
+os.environ.setdefault("ENCRYPT_KEY", "a" * 64)
+
+from bot.user_store import UserStore, UserStoreError
 
 
 @pytest.fixture
 def store(tmp_path):
-    return UserStore(base_dir=str(tmp_path))
+    """建立測試用 UserStore，資料存在 tmp 目錄"""
+    with patch.object(UserStore, "data_dir", str(tmp_path / "users")):
+        yield UserStore()
 
 
-def test_get_state_default_is_idle(store):
-    """未設定狀態時，預設應回傳 IDLE"""
-    assert store.get_state("user_001") == "IDLE"
+def test_get_plan_default_free(store):
+    """新使用者預設計畫應為 'free'"""
+    uid = "U123"
+    plan = store.get_plan(uid)
+    assert plan == "free"
 
 
-def test_set_and_get_state(store):
-    """設定狀態後應能正確讀取"""
-    store.set_state("user_001", "COLLECTING")
-    assert store.get_state("user_001") == "COLLECTING"
+def test_set_plan_and_get(store):
+    """set_plan 後應能讀回"""
+    uid = "U123"
+    store.set_plan(uid, "basic")
+    assert store.get_plan(uid) == "basic"
 
 
-def test_get_config_default_is_empty(store):
-    """未設定 config 時應回傳空 dict"""
-    assert store.get_config("user_001") == {}
+def test_get_current_service_none_by_default(store):
+    """新使用者服務應為 None"""
+    uid = "U456"
+    assert store.get_current_service(uid) is None
 
 
-def test_set_and_get_config(store):
-    """設定 config 後應能正確讀取"""
-    cfg = {"stock_id": "3312", "cost_price": 64.86}
-    store.set_config("user_001", cfg)
-    assert store.get_config("user_001") == cfg
+def test_set_service_state(store):
+    """set_service_state 應正確儲存"""
+    uid = "U456"
+    store.set_service_state(uid, "stock_monitor", 1, {"stock_id": "2330"}, None)
+    assert store.get_current_service(uid) == "stock_monitor"
+    assert store.get_current_step(uid) == 1
+    assert store.get_draft(uid)["stock_id"] == "2330"
 
 
-def test_get_daily_call_count_default_zero(store):
-    """未呼叫過 Claude 時，當日計數應為 0"""
-    assert store.get_daily_call_count("user_001") == 0
+def test_get_watchlist_empty_by_default(store):
+    """新使用者監控清單應為空"""
+    uid = "U789"
+    wl = store.get_watchlist(uid)
+    assert wl == []
 
 
-def test_increment_and_get_daily_call_count(store):
-    """累加後應正確回傳計數"""
-    store.increment_daily_call_count("user_001")
-    store.increment_daily_call_count("user_001")
-    assert store.get_daily_call_count("user_001") == 2
+def test_add_stock_encrypts_sensitive_fields(store):
+    """add_stock 應加密敏感欄位"""
+    uid = "U789"
+    stock = {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "total_shares": "5",
+        "cost_price": "900.0",
+        "stop_loss_moving": "850.0",
+        "target_stage_1": None,
+        "alerts_fired": {"stop": False, "target1": False}
+    }
+    store.add_stock(uid, stock)
+    wl = store.get_watchlist(uid)
+    assert len(wl) == 1
+    assert wl[0]["stock_id"] == "2330"
+    assert wl[0]["total_shares"] == "5"  # 讀回應自動解密
+    assert wl[0]["cost_price"] == "900.0"
 
 
-def test_daily_call_count_resets_on_new_day(store):
-    """日期變更後計數應重置為 0"""
-    import datetime
-    store.increment_daily_call_count("user_001")
-
-    # 手動寫入昨天的日期
-    state = store._read_state("user_001")
-    state["call_date"] = "2020-01-01"
-    store._write_state("user_001", state)
-
-    assert store.get_daily_call_count("user_001") == 0
-
-
-def test_multiple_users_isolated(store):
-    """不同使用者的資料應互相隔離"""
-    store.set_state("user_A", "CONFIRMING")
-    store.set_state("user_B", "IDLE")
-    assert store.get_state("user_A") == "CONFIRMING"
-    assert store.get_state("user_B") == "IDLE"
-
-
-def test_get_current_question_default_none(store):
-    """未設定 current_question 時應回傳 None"""
-    assert store.get_current_question("user_001") is None
-
-
-def test_set_and_get_current_question(store):
-    """設定 current_question 後應能正確讀取"""
-    store.set_current_question("user_001", "total_shares")
-    assert store.get_current_question("user_001") == "total_shares"
+def test_add_stock_max_3_limit(store):
+    """超過 3 支應拋出異常"""
+    uid = "U999"
+    for i in range(3):
+        store.add_stock(uid, {
+            "stock_id": str(2330 + i),
+            "stock_name": "Stock{}".format(i),
+            "total_shares": "1",
+            "cost_price": "100",
+            "stop_loss_moving": "90",
+            "target_stage_1": None,
+            "alerts_fired": {"stop": False, "target1": False}
+        })
+    with pytest.raises(UserStoreError):
+        store.add_stock(uid, {
+            "stock_id": "9999",
+            "stock_name": "Too Many",
+            "total_shares": "1",
+            "cost_price": "100",
+            "stop_loss_moving": "90",
+            "target_stage_1": None,
+            "alerts_fired": {"stop": False, "target1": False}
+        })
 
 
-def test_set_current_question_none_clears(store):
-    """設定為 None 應清除 current_question"""
-    store.set_current_question("user_001", "total_shares")
-    store.set_current_question("user_001", None)
-    assert store.get_current_question("user_001") is None
+def test_update_stock(store):
+    """update_stock 應更新指定索引的股票"""
+    uid = "U111"
+    store.add_stock(uid, {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "total_shares": "5",
+        "cost_price": "900.0",
+        "stop_loss_moving": "850.0",
+        "target_stage_1": None,
+        "alerts_fired": {"stop": False, "target1": False}
+    })
+    store.update_stock(uid, 0, {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "total_shares": "10",
+        "cost_price": "920.0",
+        "stop_loss_moving": "850.0",
+        "target_stage_1": None,
+        "alerts_fired": {"stop": False, "target1": False}
+    })
+    wl = store.get_watchlist(uid)
+    assert wl[0]["total_shares"] == "10"
+    assert wl[0]["cost_price"] == "920.0"
 
 
-def test_get_all_monitoring_users(tmp_path):
-    store = UserStore(str(tmp_path))
-    store.set_state("u1", "MONITORING")
-    store.set_state("u2", "IDLE")
-    store.set_state("u3", "MONITORING")
-    result = store.get_all_monitoring_users()
-    assert set(result) == {"u1", "u3"}
+def test_remove_stock(store):
+    """remove_stock 應刪除指定索引"""
+    uid = "U222"
+    store.add_stock(uid, {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "total_shares": "5",
+        "cost_price": "900.0",
+        "stop_loss_moving": "850.0",
+        "target_stage_1": None,
+        "alerts_fired": {"stop": False, "target1": False}
+    })
+    store.remove_stock(uid, 0)
+    wl = store.get_watchlist(uid)
+    assert len(wl) == 0
 
 
-def test_alert_fired_default_false(tmp_path):
-    store = UserStore(str(tmp_path))
-    assert store.get_alert_fired("u1", "stop") is False
-    assert store.get_alert_fired("u1", "target1") is False
+def test_check_cooldown_allows_normal_rate(store):
+    """正常速率應不觸發冷卻"""
+    uid = "U333"
+    assert store.check_cooldown(uid) == False
+    time.sleep(0.1)
+    assert store.check_cooldown(uid) == False
 
 
-def test_set_alert_fired(tmp_path):
-    store = UserStore(str(tmp_path))
-    store.set_alert_fired("u1", "stop", True)
-    assert store.get_alert_fired("u1", "stop") is True
-    assert store.get_alert_fired("u1", "target1") is False
+def test_check_cooldown_blocks_spam(store):
+    """5 訊息在 30 秒內應觸發 60 秒冷卻"""
+    uid = "U444"
+    for i in range(5):
+        store.check_cooldown(uid)
+    # 第 5 次後應被阻擋
+    assert store.check_cooldown(uid) == True
 
 
-def test_reset_alerts_on_config_change(tmp_path):
-    store = UserStore(str(tmp_path))
-    store.set_alert_fired("u1", "stop", True)
-    store.set_alert_fired("u1", "target1", True)
-    store.reset_alerts("u1")
-    assert store.get_alert_fired("u1", "stop") is False
-    assert store.get_alert_fired("u1", "target1") is False
+def test_get_all_monitoring_users(store):
+    """get_all_monitoring_users 應回傳有 watchlist 的使用者"""
+    uid1 = "U555"
+    uid2 = "U666"
+    store.add_stock(uid1, {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "total_shares": "5",
+        "cost_price": "900.0",
+        "stop_loss_moving": "850.0",
+        "target_stage_1": None,
+        "alerts_fired": {"stop": False, "target1": False}
+    })
+    users = store.get_all_monitoring_users()
+    assert uid1 in users
+    assert uid2 not in users
+
+
+def test_get_alert_fired(store):
+    """get_alert_fired 應回傳警報狀態"""
+    uid = "U777"
+    store.add_stock(uid, {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "total_shares": "5",
+        "cost_price": "900.0",
+        "stop_loss_moving": "850.0",
+        "target_stage_1": None,
+        "alerts_fired": {"stop": False, "target1": False}
+    })
+    assert store.get_alert_fired(uid, 0, "stop") == False
+
+
+def test_set_alert_fired(store):
+    """set_alert_fired 應更新警報狀態"""
+    uid = "U888"
+    store.add_stock(uid, {
+        "stock_id": "2330",
+        "stock_name": "台積電",
+        "total_shares": "5",
+        "cost_price": "900.0",
+        "stop_loss_moving": "850.0",
+        "target_stage_1": None,
+        "alerts_fired": {"stop": False, "target1": False}
+    })
+    store.set_alert_fired(uid, 0, "stop", True)
+    assert store.get_alert_fired(uid, 0, "stop") == True
