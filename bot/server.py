@@ -19,7 +19,12 @@ from bot.line_client import LineClient
 from bot.user_store import UserStore
 from bot.data.fugle_client import FugleClient
 from bot.monitor_engine import MonitorEngine
+from bot.scheduler.manager import SchedulerManager
+from bot.scheduler.jobs import ScheduledJobs
 from notifier import DiscordNotifier
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _clear_user_data():
@@ -47,13 +52,40 @@ async def lifespan(app: FastAPI):
     try:
         client = FugleClient()
         client.load_stock_map()
-        print("[startup] Stock map loaded")
+        logger.info("[startup] Stock map loaded")
     except Exception as e:
-        print("[startup] Stock map load failed: {}".format(e))
+        logger.error("[startup] Stock map load failed: {}".format(e))
+
+    # 啟動監控引擎
     discord = DiscordNotifier()
     _engine = MonitorEngine(_store, _line, discord)
     _engine.start()
+
+    # 初始化並啟動排程
+    try:
+        scheduled_jobs = ScheduledJobs(
+            user_store=_store,
+            line_client=_line,
+            analysis_engine=None,  # 稍後由 Phase C 初始化
+            stock_picker_engine=None,  # 稍後由 Phase B 初始化
+        )
+        scheduler_manager = SchedulerManager()
+        scheduler_manager.start(scheduled_jobs)
+        app.state.scheduler_manager = scheduler_manager
+        logger.info("[startup] Scheduler manager initialized and started")
+    except Exception as e:
+        logger.error("[startup] Scheduler initialization failed: {}".format(e))
+
     yield
+
+    # 關閉排程
+    if hasattr(app.state, 'scheduler_manager'):
+        scheduler_manager = app.state.scheduler_manager
+        if scheduler_manager.is_running:
+            scheduler_manager.stop()
+            logger.info("[shutdown] Scheduler manager stopped")
+
+    # 關閉監控引擎
     if _engine:
         _engine.stop()
 

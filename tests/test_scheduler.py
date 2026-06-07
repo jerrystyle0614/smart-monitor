@@ -66,6 +66,78 @@ class TestSchedulerManager:
         assert manager.is_running is False
         assert manager.scheduled_jobs is None
 
+    def test_manager_start_stop(self):
+        """驗證管理器可以啟動和停止"""
+        mock_jobs = MagicMock(spec=ScheduledJobs)
+        mock_jobs.stock_picker_daily = MagicMock()
+        mock_jobs.pre_market_analysis = MagicMock()
+        mock_jobs.post_market_analysis = MagicMock()
+
+        manager = SchedulerManager()
+
+        # 啟動
+        manager.start(mock_jobs)
+        assert manager.is_running is True
+
+        # 停止
+        manager.stop()
+        assert manager.is_running is False
+
+    def test_manager_registers_jobs(self):
+        """驗證管理器註冊所有任務"""
+        mock_jobs = MagicMock(spec=ScheduledJobs)
+        mock_jobs.stock_picker_daily = MagicMock()
+        mock_jobs.pre_market_analysis = MagicMock()
+        mock_jobs.post_market_analysis = MagicMock()
+
+        manager = SchedulerManager()
+        manager.start(mock_jobs)
+
+        jobs = manager.get_jobs()
+        # 應該有至少 1 個任務被註冊
+        assert len(jobs) >= 1
+
+        manager.stop()
+
+    def test_manager_disabled_with_flag(self):
+        """ENABLE_SCHEDULER=False 時不啟動"""
+        with patch("bot.scheduler.manager.ENABLE_SCHEDULER", False):
+            mock_jobs = MagicMock(spec=ScheduledJobs)
+            manager = SchedulerManager()
+            manager.start(mock_jobs)
+
+            # 應該不啟動
+            assert manager.is_running is False
+
+    def test_get_jobs_empty(self):
+        """未啟動排程時 get_jobs 返回空列表"""
+        manager = SchedulerManager()
+        jobs = manager.get_jobs()
+        assert isinstance(jobs, list)
+        assert len(jobs) == 0
+
+    def test_manager_stop_without_start(self):
+        """在未啟動的情況下呼叫 stop 應安全完成"""
+        manager = SchedulerManager()
+        manager.stop()  # 應不拋出異常
+        assert manager.is_running is False
+
+    def test_manager_start_twice_ignored(self):
+        """重複啟動應被忽略並記錄警告"""
+        mock_jobs = MagicMock(spec=ScheduledJobs)
+        mock_jobs.stock_picker_daily = MagicMock()
+        mock_jobs.pre_market_analysis = MagicMock()
+        mock_jobs.post_market_analysis = MagicMock()
+
+        manager = SchedulerManager()
+        manager.start(mock_jobs)
+
+        # 再次啟動應被忽略
+        manager.start(mock_jobs)
+        assert manager.is_running is True
+
+        manager.stop()
+
 
 from bot.scheduler.jobs import ScheduledJobs
 
