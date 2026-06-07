@@ -45,19 +45,19 @@ class StockPickerService(ScriptedService):
             return True, text, ""
         return False, None, "請輸入『詳細』、『訂閱』或『取消訂閱』"
     
-    def start(self, uid: str, store, line) -> None:
+    def start(self, uid: str, store, line, reply_token: str = "") -> None:
         """進入選股推薦，顯示推薦清單"""
         cache = load_picker_cache()
-        
+
         if not cache or not cache.get("stocks"):
-            line.reply("📈 今日選股推薦\n\n掃描尚未開始或無符合條件的股票。")
+            line.reply(reply_token, "📈 今日選股推薦\n\n掃描尚未開始或無符合條件的股票。")
             store.clear_service_state(uid)
             return
-        
+
         stocks = cache.get("stocks", [])
         msg = f"📈 Smart Monitor 每日選股推薦（{cache.get('date', '未知')}）\n\n"
         msg += f"掃描發現 {len(stocks)} 支值得關注的股票：\n\n"
-        
+
         for i, stock in enumerate(stocks[:10], 1):  # 最多顯示 10 支
             stock_id = stock.get("stock_id", "")
             stock_name = stock.get("stock_name", "")
@@ -71,26 +71,26 @@ class StockPickerService(ScriptedService):
                     msg += reasons["technical"]
                 msg = msg.rstrip(", ") + "\n"
             msg += "\n"
-        
+
         msg += "輸入『詳細 [數字]』查看詳細說明\n"
         msg += "輸入『訂閱』開始每日推播\n"
         msg += "輸入『取消訂閱』停止推播\n"
         msg += "輸入『取消』回到主選單"
-        
-        line.reply(msg)
+
+        line.reply(reply_token, msg)
         store.set_service_state(uid, self.name, 0, {}, None)
-    
-    def on_complete(self, uid: str, draft: Dict, store, line) -> None:
+
+    def on_complete(self, uid: str, draft: Dict, store, line, reply_token: str = "") -> None:
         """處理訂閱/查看詳細等操作"""
         action = draft.get("action")
-        
+
         if action == "訂閱":
             store.set_subscription(uid, "stock_picker", True)
-            line.reply("✅ 已訂閱每日選股推薦（08:00 推播）")
+            line.reply(reply_token, "✅ 已訂閱每日選股推薦（08:00 推播）")
         elif action == "取消訂閱":
             store.set_subscription(uid, "stock_picker", False)
-            line.reply("❌ 已取消每日選股推薦")
+            line.reply(reply_token, "❌ 已取消每日選股推薦")
         elif action == "詳細":
-            line.reply("詳細功能開發中...")
-        
+            line.reply(reply_token, "詳細功能開發中...")
+
         store.clear_service_state(uid)

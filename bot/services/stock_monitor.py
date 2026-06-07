@@ -72,8 +72,8 @@ class StockMonitorService(ScriptedService):
         except ValueError:
             return False, None, "請輸入數字，例如：900"
 
-    def on_complete(self, uid, draft, store, line):
-        # type: (str, dict, Any, Any) -> None
+    def on_complete(self, uid, draft, store, line, reply_token=""):
+        # type: (str, dict, Any, Any, str) -> None
         """完成後顯示確認卡片"""
         stock_info = draft.get("stock_id", {})
         stock_id = stock_info.get("stock_id") if isinstance(stock_info, dict) else stock_info
@@ -87,7 +87,7 @@ class StockMonitorService(ScriptedService):
         client = FugleClient()
         quote = client.get_quote(stock_id)
         if not quote:
-            line.reply("⚠️ 無法取得即時報價，請稍後重試")
+            line.reply(reply_token, "⚠️ 無法取得即時報價，請稍後重試")
             return
 
         close_price = quote["close_price"]
@@ -117,4 +117,4 @@ class StockMonitorService(ScriptedService):
 
         # 切換狀態為等待確認
         store.set_service_state(uid, "stock_monitor_confirm", None, draft, None)
-        line.reply(msg)
+        line.reply(reply_token, msg)

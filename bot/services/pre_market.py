@@ -42,8 +42,8 @@ class PreMarketService(ScriptedService):
             return False, None, "找不到此股票，請重新輸入"
         return True, result, ""
 
-    def on_complete(self, uid, draft, store, line):
-        # type: (str, dict, Any, Any) -> None
+    def on_complete(self, uid, draft, store, line, reply_token=""):
+        # type: (str, dict, Any, Any, str) -> None
         """執行分析並推播"""
         stock_info = draft.get("stock_id", {})
         stock_id = stock_info.get("stock_id") if isinstance(stock_info, dict) else stock_info

@@ -49,12 +49,12 @@ def handle_follow(uid, store, line):
     # type: (str, object, object) -> None
     """處理追蹤事件"""
     store.set_plan(uid, "free")
-    line.reply(
+    line.push(uid,
         "👋 歡迎使用 Smart Monitor！\n\n"
         "我是您的台股投資小助手。\n"
         "提供股票監控、盤前/盤後分析等功能。"
     )
-    line.reply("輸入『狀態』查看監控清單，或輸入數字選擇服務。")
+    line.push(uid, "輸入『狀態』查看監控清單，或輸入數字選擇服務。")
 
 
 def handle_message(uid, text, store, line, reply_token):
@@ -78,7 +78,7 @@ def handle_message(uid, text, store, line, reply_token):
 
     # 等待股票監控確認
     if current_service == "stock_monitor_confirm":
-        _handle_stock_confirm(uid, text, store, line)
+        _handle_stock_confirm(uid, text, store, line, reply_token)
         return
 
     # 其他服務問答進行中
@@ -88,13 +88,13 @@ def handle_message(uid, text, store, line, reply_token):
 
     # 主菜單路由
     if text in ("1", "2", "3", "4"):
-        _handle_menu(uid, text, store, line)
+        _handle_menu(uid, text, store, line, reply_token)
     elif text in ("狀態", "status"):
-        _show_watchlist(uid, store, line)
+        _show_watchlist(uid, store, line, reply_token)
     elif text in ("說明", "help"):
-        _show_help(uid, line)
+        _show_help(uid, line, reply_token)
     else:
-        _show_menu(uid, store, line)
+        _show_menu(uid, store, line, reply_token)
 
 
 def _route_to_service(uid, text, service_name, store, line, reply_token):
@@ -103,16 +103,16 @@ def _route_to_service(uid, text, service_name, store, line, reply_token):
     service = _SERVICE_MAP.get(service_name)
     if not service:
         store.clear_service_state(uid)
-        _show_menu(uid, store, line)
+        _show_menu(uid, store, line, reply_token)
         return
 
-    result = service.handle_input(uid, text, store, line)
+    result = service.handle_input(uid, text, store, line, reply_token)
     if result == "CANCEL":
-        _show_menu(uid, store, line)
+        _show_menu(uid, store, line, reply_token)
 
 
-def _handle_menu(uid, choice, store, line):
-    # type: (str, str, object, object) -> None
+def _handle_menu(uid, choice, store, line, reply_token):
+    # type: (str, str, object, object, str) -> None
     """處理主菜單選擇 (1/2/3/4)"""
     plan = store.get_plan(uid)
 
@@ -125,45 +125,45 @@ def _handle_menu(uid, choice, store, line):
 
     service_name, service = service_map.get(choice, (None, None))
     if not service_name:
-        _show_menu(uid, store, line)
+        _show_menu(uid, store, line, reply_token)
         return
 
     # 檢查權限
     allowed_plans = SERVICE_PERMISSIONS.get(service_name, [])
     if plan not in allowed_plans:
         if service_name == "stock_picker":
-            line.reply(
+            line.reply(reply_token,
                 "⚠️ 選股推薦為 pro 方案專屬功能。\n"
                 "請聯絡管理員了解升級方式。"
             )
         else:
-            line.reply(
+            line.reply(reply_token,
                 "⚠️ 此功能需要升級方案才能使用。\n"
                 "請聯絡管理員了解升級方式。"
             )
         return
 
     # 啟動服務
-    service.start(uid, store, line)
+    service.start(uid, store, line, reply_token)
 
 
-def _handle_stock_confirm(uid, text, store, line):
-    # type: (str, str, object, object) -> None
+def _handle_stock_confirm(uid, text, store, line, reply_token):
+    # type: (str, str, object, object, str) -> None
     """處理股票監控確認步驟（stock_monitor_confirm 狀態）"""
     if text == "取消":
         store.clear_service_state(uid)
-        line.reply("已取消，輸入數字重新選擇服務。")
-        _show_menu(uid, store, line)
+        line.reply(reply_token, "已取消，輸入數字重新選擇服務。")
+        _show_menu(uid, store, line, reply_token)
         return
 
     if text != "確認":
-        line.reply("請輸入「確認」開始監控，或「取消」重新設定。")
+        line.reply(reply_token, "請輸入「確認」開始監控，或「取消」重新設定。")
         return
 
     draft = store.get_draft(uid)
     if not draft:
         store.clear_service_state(uid)
-        _show_menu(uid, store, line)
+        _show_menu(uid, store, line, reply_token)
         return
 
     stock_info = draft.get("stock_id", {})
@@ -186,16 +186,16 @@ def _handle_stock_confirm(uid, text, store, line):
             "target_stage_1": None,
             "alerts_fired": {"stop": False, "target1": False},
         })
-        line.reply("✅ 已開始監控 {}（{}）".format(stock_name, stock_id))
-        _show_watchlist(uid, store, line)
+        line.reply(reply_token, "✅ 已開始監控 {}（{}）".format(stock_name, stock_id))
+        _show_watchlist(uid, store, line, reply_token)
     except Exception as e:
-        line.reply("❌ 無法保存監控設定：{}".format(e))
+        line.reply(reply_token, "❌ 無法保存監控設定：{}".format(e))
 
     store.clear_service_state(uid)
 
 
-def _show_menu(uid, store, line):
-    # type: (str, object, object) -> None
+def _show_menu(uid, store, line, reply_token):
+    # type: (str, object, object, str) -> None
     """顯示主菜單"""
     plan = store.get_plan(uid)
 
@@ -216,16 +216,16 @@ def _show_menu(uid, store, line):
     menu += "\n輸入數字選擇，或輸入『狀態』查看目前監控\n"
     menu += "━━━━━━━━━━━━━━━━━━"
 
-    line.reply(menu)
+    line.reply(reply_token, menu)
 
 
-def _show_watchlist(uid, store, line):
-    # type: (str, object, object) -> None
+def _show_watchlist(uid, store, line, reply_token):
+    # type: (str, object, object, str) -> None
     """顯示監控清單"""
     watchlist = store.get_watchlist(uid)
 
     if not watchlist:
-        line.reply("📊 你還沒有監控任何股票。\n輸入『1』開始新增。")
+        line.reply(reply_token, "📊 你還沒有監控任何股票。\n輸入『1』開始新增。")
         return
 
     msg = "📊 你的監控清單（{}/3）\n\n".format(len(watchlist))
@@ -242,11 +242,11 @@ def _show_watchlist(uid, store, line):
         msg += "\n"
 
     msg += "\n可用指令：新增 / 修改 [數字] / 刪除 [數字]"
-    line.reply(msg)
+    line.reply(reply_token, msg)
 
 
-def _show_help(uid, line):
-    # type: (str, object) -> None
+def _show_help(uid, line, reply_token):
+    # type: (str, object, str) -> None
     """顯示使用說明"""
     msg = (
         "📖 使用說明\n\n"
@@ -259,4 +259,4 @@ def _show_help(uid, line):
         "『狀態』查看監控清單\n"
         "『說明』查看此說明"
     )
-    line.reply(msg)
+    line.reply(reply_token, msg)
