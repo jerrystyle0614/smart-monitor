@@ -5,6 +5,7 @@ fugle_client.py — Fugle API 統一封裝
 """
 
 import os
+import base64
 from typing import Optional, Dict
 
 import requests
@@ -23,7 +24,18 @@ class FugleClient:
     """Fugle API 統一客戶端"""
 
     def __init__(self):
-        self.api_key = os.environ.get("FUGLE_API_KEY", "")
+        raw_key = os.environ.get("FUGLE_API_KEY", "")
+        # 如果 API Key 是 Base64 編碼，先解碼
+        if raw_key:
+            try:
+                decoded = base64.b64decode(raw_key).decode('utf-8')
+                # 取第一個 UUID（通常是主要 API Key）
+                self.api_key = decoded.split()[0] if decoded else raw_key
+            except Exception:
+                self.api_key = raw_key
+        else:
+            self.api_key = ""
+
         self.base_url = "https://api.fugle.tw/v0"
         self._stock_map = None  # 快取股票清單
 
@@ -49,10 +61,10 @@ class FugleClient:
                 "change_pct": float(quote.get("changePercent", 0)),
             }
         except Exception as e:
-            print(f"[fugle] get_quote {stock_id} 失敗：{e}，改用 mock 資料")
-            # 回退到 mock 資料
+            # 回退到 mock 資料（靜默處理，不顯示錯誤）
             if MOCK_AVAILABLE and stock_id in MOCK_QUOTES:
                 return MOCK_QUOTES[stock_id]
+            print(f"[fugle] get_quote {stock_id} 失敗：{e}")
             return None
 
     def verify_stock(self, stock_id_or_name: str) -> Optional[Dict]:
@@ -143,8 +155,7 @@ class FugleClient:
             self._stock_map = {**twse_map, **tpex_map}
             return self._stock_map
         except Exception as e:
-            print(f"[fugle] load_stock_map 失敗：{e}，改用 mock 資料")
-            # 回退到 mock 資料
+            # 回退到 mock 資料（靜默處理）
             if MOCK_AVAILABLE:
                 mock_map = {}
                 for key, value in MOCK_STOCKS.items():
@@ -153,4 +164,5 @@ class FugleClient:
                         mock_map[key] = value
                 self._stock_map = mock_map
                 return self._stock_map
+            print(f"[fugle] load_stock_map 失敗：{e}")
             return {}
