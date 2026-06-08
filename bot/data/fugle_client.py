@@ -36,7 +36,8 @@ class FugleClient:
         else:
             self.api_key = ""
 
-        self.base_url = "https://api.fugle.tw/v0"
+        # 使用正確的 Fugle v0.3 realtime API
+        self.base_url = "https://api.fugle.tw/realtime/v0.3"
         self._stock_map = None  # 快取股票清單
 
     def get_quote(self, stock_id: str) -> Optional[Dict]:
@@ -46,8 +47,12 @@ class FugleClient:
         或 None（失敗）
         """
         try:
-            url = f"{self.base_url}/intraday/quote?symbolId={stock_id}&apiToken={self.api_key}"
-            resp = requests.get(url, timeout=5)
+            # 使用正確的參數格式：query string，不是 path parameter
+            url = f"{self.base_url}/intraday/quote"
+            params = {"symbolId": stock_id}
+            headers = {"X-FUGLE-APIKEY": self.api_key}
+
+            resp = requests.get(url, params=params, headers=headers, timeout=5)
             resp.raise_for_status()
             data = resp.json()
 
@@ -57,7 +62,7 @@ class FugleClient:
             return {
                 "stock_id": stock_id,
                 "stock_name": info.get("name", ""),
-                "close_price": float(quote.get("closePrice", 0)),
+                "close_price": float(quote.get("trade", {}).get("price", 0)),
                 "change_pct": float(quote.get("changePercent", 0)),
             }
         except Exception as e:
@@ -74,12 +79,18 @@ class FugleClient:
         """
         # 先試用代號查
         try:
-            url = f"{self.base_url}/intraday/quote?symbolId={stock_id_or_name}&apiToken={self.api_key}"
-            resp = requests.get(url, timeout=5)
+            url = f"{self.base_url}/intraday/quote"
+            params = {"symbolId": stock_id_or_name}
+            headers = {"X-FUGLE-APIKEY": self.api_key}
+
+            resp = requests.get(url, params=params, headers=headers, timeout=5)
             resp.raise_for_status()
             data = resp.json()
-            name = data.get("data", {}).get("info", {}).get("name", "")
-            if name:
+
+            # 如果能成功查詢，則該股票存在
+            if data.get("data"):
+                info = data.get("data", {}).get("info", {})
+                name = info.get("name", stock_id_or_name)
                 return {"stock_id": stock_id_or_name, "stock_name": name}
         except Exception:
             pass
