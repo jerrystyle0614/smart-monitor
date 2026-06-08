@@ -47,8 +47,14 @@ class ServiceRouter:
 
 def handle_follow(uid, store, line):
     # type: (str, object, object) -> None
-    """處理追蹤事件"""
-    store.set_plan(uid, "pro")  # 測試時改為 pro 以看到全部功能
+    """處理追蹤事件。若用戶已初始化過（profile 存在），略過歡迎訊息避免重複推播。"""
+    already_registered = store.get_plan(uid) != "free"
+    store.set_plan(uid, "pro")
+
+    # LINE 有時會重複送 follow event（重新連線、server 重啟等），用已初始化判斷排除
+    if already_registered:
+        return
+
     line.push(uid,
         "👋 歡迎使用 Smart 助理！\n\n"
         "我是您的投資助理。\n"

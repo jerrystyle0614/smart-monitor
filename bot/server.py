@@ -3,7 +3,6 @@ server.py — FastAPI webhook server
 接收 LINE 平台傳入的事件並路由到對應 handler
 """
 
-import asyncio
 import base64
 import collections
 import hashlib
@@ -146,13 +145,7 @@ async def webhook(request: Request):
 
             text = msg.get("text", "")
             reply_token = event.get("replyToken", "")
-
-            # 用 asyncio 背景執行，讓 webhook 立即回 200 避免 LINE retry
-            asyncio.get_event_loop().run_in_executor(
-                None,
-                handle_message,
-                user_id, text, _store, _line, reply_token,
-            )
+            handle_message(user_id, text, _store, _line, reply_token)
 
     return {"status": "ok"}
 
