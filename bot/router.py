@@ -429,43 +429,21 @@ def _run_risk_analysis(uid, draft, line):
         high20 = result.high20
 
         # 損益計算
-        capital = shares * cost_price                          # 投入成本
-        current_value = shares * close                         # 目前市值
-        unrealized_pnl = current_value - capital               # 未實現損益
-        unrealized_pct = unrealized_pnl / capital * 100       # 損益 %
+        capital = shares * cost_price
+        current_value = shares * close
+        unrealized_pnl = current_value - capital
+        unrealized_pct = unrealized_pnl / capital * 100
 
-        # 停損參考邏輯：
-        #   均價 < MA20（成本在均線下方）→ 用 MA20 × 97%（技術面防守）
-        #   均價 >= MA20（已在均線上方獲利）→ 用均價 × 97%（保護成本）
-        #   無論如何，停損不得高於目前收盤（已在虧損中時取較低值）
-        if cost_price < ma20:
-            stop_loss_base = ma20
-            stop_loss_reason = "MA20 {:.1f} 元 × 97%（均價低於均線，技術面防守）".format(ma20)
-        else:
-            stop_loss_base = cost_price
-            stop_loss_reason = "均價 {:.1f} 元 × 97%（均價高於均線，保護成本）".format(cost_price)
-
-        stop_loss_price = round(stop_loss_base * 0.97, 1)
-        # 若停損已高於現價（已在虧損），改用現價 × 97% 以實際損失為準
-        if stop_loss_price > close:
-            stop_loss_price = round(close * 0.97, 1)
-            stop_loss_reason = "收盤 {:.1f} 元 × 97%（目前虧損，以現價計算）".format(close)
-
-        loss_at_stop = shares * (close - stop_loss_price)
-        loss_pct_at_stop = (close - stop_loss_price) / close * 100
-
-        # 停利目標：第一目標 = 近20日高點，第二目標 = 高點延伸 8%
-        tp1_price = round(high20, 1)
-        tp2_price = round(high20 * 1.08, 1)
-        gain_at_tp1 = shares * (tp1_price - close)
-        gain_at_tp2 = shares * (tp2_price - close)
-        gain_pct_tp1 = (tp1_price - close) / close * 100
-        gain_pct_tp2 = (tp2_price - close) / close * 100
-
-        # 風險報酬比（以停損損失 vs 停利一獲利計算）
-        risk_amt = abs(loss_at_stop)
-        reward_amt = abs(gain_at_tp1)
-        rr_ratio = round(reward_amt / risk_amt, 1) if risk_amt > 0 else 0
+        # 近20日 K 線（供 AI 判斷支撐壓力）
+        kline_rows = df.tail(20)
+        kline_lines = "日期\t開\t高\t低\t收\t量(張)\n"
+        for _, row in kline_rows.iterrows():
+            kline_lines += (
+                f"{str(row.get('date',''))[:10]}\t"
+                f"{row.get('open',0)}\t{row.get('high',0)}\t"
+                f"{row.get('low',0)}\t{row.get('close',0)}\t"
+                f"{int(row.get('volume',0)) // 1000:,}\n"
+            )
 
         alert_lines = ""
         for a in result.alerts:
@@ -478,36 +456,63 @@ def _run_risk_analysis(uid, draft, line):
             line.push(uid, "❌ 無法進行 AI 風險評估（API Key 未設定）")
             return
 
+        # AI 決定停損價、停利目標、風險報酬比
         prompt = (
-            f"你是台股風險管理顧問，幫散戶做投資風險評估。\n\n"
+            f"你是台股風險管理顧問。根據以下資訊，為這位投資人建議停損價和停利目標。\n\n"
             f"【股票】{stock_name}（{stock_id}）\n"
             f"【持股】{shares:,} 股，均價 {cost_price} 元\n"
             f"【投入成本】{capital:,.0f} 元\n"
             f"【目前收盤】{close} 元，市值 {current_value:,.0f} 元\n"
             f"【未實現損益】{unrealized_pnl:+,.0f} 元（{unrealized_pct:+.2f}%）\n"
-            f"【MA20】{ma20:.2f} 元（偏離 {result.pct_from_ma20:+.2f}%）\n"
-            f"【近20日高點】{high20} 元（已回撤 {result.pullback_pct:.2f}%）\n"
-            f"【停損參考價】{stop_loss_price} 元（{stop_loss_reason}，若觸及損失約 {loss_at_stop:,.0f} 元）\n"
-            f"【停利第一目標】{tp1_price} 元（近20日高點，潛在獲利約 {gain_at_tp1:,.0f} 元）\n"
-            f"【停利第二目標】{tp2_price} 元（高點延伸 8%，潛在獲利約 {gain_at_tp2:,.0f} 元）\n"
-            f"【風險報酬比】1 : {rr_ratio}（停損 vs 停利一）\n"
+            f"【MA20】{ma20:.2f} 元（股價偏離均線 {result.pct_from_ma20:+.2f}%）\n"
+            f"【近20日最高收盤】{high20} 元（從高點回撤 {result.pullback_pct:.2f}%）\n"
             f"【系統訊號】\n{alert_lines}\n"
-            f"請用白話文提供風險評估（6～8 句話）：\n"
-            f"1. 目前持股損益狀況說明\n"
-            f"2. 停損設定的邏輯與原因\n"
-            f"3. 停利目標的合理性說明\n"
-            f"4. 風險報酬比是否值得持有\n"
-            f"5. 目前風險等級（低/中/高）及具體建議\n\n"
-            f"語氣平穩，數字要具體，直接輸出說明文字（不用標題、不用編號）。"
+            f"【近20日 K 線】\n{kline_lines}\n"
+            f"請綜合技術面（支撐/壓力位、MA20、K 線型態）與持倉成本，給出建議。\n\n"
+            f"回覆格式為 JSON，不要有其他文字：\n"
+            f'{{"stop_loss_price": 數字, "stop_loss_reason": "停損理由（1句）",'
+            f'"tp1_price": 數字, "tp1_reason": "第一停利理由（1句）",'
+            f'"tp2_price": 數字, "tp2_reason": "第二停利理由（1句）",'
+            f'"risk_level": "低/中/高",'
+            f'"summary": "白話風險評估（5～7句）"}}'
         )
 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=500,
+            max_tokens=600,
             messages=[{"role": "user", "content": prompt}],
         )
-        ai_text = response.content[0].text.strip()
+
+        # 解析 AI 回傳的 JSON
+        import json as _json
+        raw = response.content[0].text.strip()
+        try:
+            start = raw.find("{")
+            end = raw.rfind("}") + 1
+            ai_data = _json.loads(raw[start:end])
+        except Exception:
+            ai_data = {}
+
+        stop_loss_price = float(ai_data.get("stop_loss_price", round(close * 0.95, 1)))
+        stop_loss_reason = ai_data.get("stop_loss_reason", "AI 建議停損點")
+        tp1_price = float(ai_data.get("tp1_price", round(high20, 1)))
+        tp1_reason = ai_data.get("tp1_reason", "第一停利目標")
+        tp2_price = float(ai_data.get("tp2_price", round(high20 * 1.08, 1)))
+        tp2_reason = ai_data.get("tp2_reason", "第二停利目標")
+        risk_level = ai_data.get("risk_level", "中")
+        summary = ai_data.get("summary", raw)
+
+        # 根據 AI 停損/停利計算損益金額
+        loss_at_stop = shares * (close - stop_loss_price)
+        loss_pct_at_stop = (close - stop_loss_price) / close * 100
+        gain_at_tp1 = shares * (tp1_price - close)
+        gain_pct_tp1 = (tp1_price - close) / close * 100
+        gain_at_tp2 = shares * (tp2_price - close)
+        gain_pct_tp2 = (tp2_price - close) / close * 100
+        risk_amt = abs(loss_at_stop)
+        reward_amt = abs(gain_at_tp1)
+        rr_ratio = round(reward_amt / risk_amt, 1) if risk_amt > 0 else 0
 
         pnl_sign = "+" if unrealized_pnl >= 0 else ""
         msg = (
@@ -516,15 +521,17 @@ def _run_risk_analysis(uid, draft, line):
             f"成本：{capital:,.0f} 元｜市值：{current_value:,.0f} 元\n"
             f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n\n"
             f"🛡️ 停損：{stop_loss_price} 元\n"
-            f"   依據：{stop_loss_reason}\n"
+            f"   理由：{stop_loss_reason}\n"
             f"   若觸及：損失約 {loss_at_stop:,.0f} 元（{loss_pct_at_stop:.1f}%）\n\n"
             f"🎯 停利目標：\n"
-            f"   第一目標：{tp1_price} 元（近20日高點）\n"
-            f"   　潛在獲利：{gain_at_tp1:+,.0f} 元（{gain_pct_tp1:+.1f}%）\n"
-            f"   第二目標：{tp2_price} 元（高點延伸 8%）\n"
-            f"   　潛在獲利：{gain_at_tp2:+,.0f} 元（{gain_pct_tp2:+.1f}%）\n\n"
-            f"⚖️ 風險報酬比：1 : {rr_ratio}\n\n"
-            f"💡 Smart 建議\n{ai_text}"
+            f"   第一目標：{tp1_price} 元\n"
+            f"   理由：{tp1_reason}\n"
+            f"   潛在獲利：{gain_at_tp1:+,.0f} 元（{gain_pct_tp1:+.1f}%）\n\n"
+            f"   第二目標：{tp2_price} 元\n"
+            f"   理由：{tp2_reason}\n"
+            f"   潛在獲利：{gain_at_tp2:+,.0f} 元（{gain_pct_tp2:+.1f}%）\n\n"
+            f"⚖️ 風險報酬比：1 : {rr_ratio}　風險等級：{risk_level}\n\n"
+            f"💡 Smart 建議\n{summary}"
         )
         line.push(uid, msg)
 
