@@ -23,53 +23,74 @@ class FinMindClient:
         self.api_key = os.environ.get("FINMIND_API_KEY", "")
         self.base_url = "https://api.finmindtrade.com/api/v4"
 
-    def get_three_major_buyers(self, stock_id: str, days: int = 3) -> Optional[Dict]:
+    def get_three_major_buyers(self, stock_id: str, days: int = 5) -> Optional[Dict]:
         """
         取得三大法人買賣超資料。
+        Dataset: TaiwanStockInstitutionalInvestorsBuySell（免費方案可用）
+        name 欄位值：Foreign_Investor / Investment_Trust / Dealer_self / Dealer_Hedging
+
         回傳 {
-            "consecutive_buy_days": int,
-            "total_buy": float,
-            "total_sell": float,
-            "latest_data": dict or None
+            "consecutive_net_buy_days": int,   # 外資+投信合計連續淨買超天數
+            "foreign_net": float,              # 外資近 days 日淨買超
+            "trust_net": float,                # 投信近 days 日淨買超
+            "total_net": float,                # 三大法人合計淨買超
+            "dates": list                      # 涵蓋的日期
         }
         或 None（失敗）
-
-        API Verification Result (2026-06-07):
-        ✗ TaiwanStockGovernmentBankBuySell: NOT AVAILABLE FOR PER-STOCK QUERY
-        - Dataset exists but does not support stock_id parameter (requires portfolio-level)
-        - Alternative: Try with different dataset name or check premium tier
-        - Current implementation: Returns None (API 400 error)
         """
+        from datetime import date, timedelta
         try:
             url = f"{self.base_url}/data"
+            start_date = (date.today() - timedelta(days=30)).isoformat()
             params = {
-                "dataset": "TaiwanStockThreeMainForces",
-                "stock_id": stock_id,
+                "dataset": "TaiwanStockInstitutionalInvestorsBuySell",
+                "data_id": stock_id,
                 "api_key": self.api_key,
+                "start_date": start_date,
             }
-            resp = requests.get(url, params=params, timeout=5)
+            resp = requests.get(url, params=params, timeout=8)
             resp.raise_for_status()
-            data = resp.json()
+            records = resp.json().get("data", [])
 
-            if not data.get("data"):
+            if not records:
                 return None
 
-            # 計算連續買超天數
-            records = data.get("data", [])
+            # 依日期聚合
+            from collections import defaultdict
+            by_date = defaultdict(lambda: {"foreign": 0, "trust": 0, "dealer": 0})
+            for rec in records:
+                d = rec["date"]
+                net = float(rec.get("buy", 0)) - float(rec.get("sell", 0))
+                name = rec.get("name", "")
+                if "Foreign_Investor" in name:
+                    by_date[d]["foreign"] += net
+                elif "Investment_Trust" in name:
+                    by_date[d]["trust"] += net
+                elif "Dealer" in name:
+                    by_date[d]["dealer"] += net
+
+            sorted_dates = sorted(by_date.keys(), reverse=True)[:days]
+
+            foreign_net = sum(by_date[d]["foreign"] for d in sorted_dates)
+            trust_net = sum(by_date[d]["trust"] for d in sorted_dates)
+            dealer_net = sum(by_date[d]["dealer"] for d in sorted_dates)
+            total_net = foreign_net + trust_net + dealer_net
+
+            # 計算外資+投信合計連續淨買超天數
             consecutive_days = 0
-            for record in records:
-                buy = float(record.get("buy", 0))
-                sell = float(record.get("sell", 0))
-                if buy > sell:
+            for d in sorted_dates:
+                if by_date[d]["foreign"] + by_date[d]["trust"] > 0:
                     consecutive_days += 1
                 else:
                     break
 
             return {
-                "consecutive_buy_days": consecutive_days,
-                "total_buy": sum(float(r.get("buy", 0)) for r in records[:days]),
-                "total_sell": sum(float(r.get("sell", 0)) for r in records[:days]),
-                "latest_data": records[0] if records else None,
+                "consecutive_net_buy_days": consecutive_days,
+                "foreign_net": foreign_net,
+                "trust_net": trust_net,
+                "dealer_net": dealer_net,
+                "total_net": total_net,
+                "dates": sorted_dates,
             }
         except Exception as e:
             print(f"[finmind] get_three_major_buyers {stock_id} 失敗：{e}")
