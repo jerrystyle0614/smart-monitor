@@ -150,27 +150,27 @@ def _ai_explain(stock_id, stock_name, result, mode, df):
         time_label = "盤前" if mode == AnalysisMode.PREMARKET else "盤後"
         price_label = "昨收" if mode == AnalysisMode.PREMARKET else "今日收盤"
 
-        # 今日（最後一筆）開/高/低/量
+        # 今日（最後一筆）開/高/低/量（成交量由股轉張：÷ 1000）
         today_row = df.iloc[-1]
         today_open   = float(today_row.get("open",   0))
         today_high   = float(today_row.get("high",   0))
         today_low    = float(today_row.get("low",    0))
-        today_volume = int(today_row.get("volume",   0))
+        today_volume = int(today_row.get("volume",   0)) // 1000  # 股 → 張
 
         # 平均量（近20日，排除今日）
         recent = df.tail(21).iloc[:-1] if len(df) > 1 else df
-        avg_volume = int(recent["volume"].mean()) if len(recent) > 0 else 0
+        avg_volume = int(recent["volume"].mean()) // 1000 if len(recent) > 0 else 0  # 股 → 張
         volume_ratio = (today_volume / avg_volume * 100) if avg_volume > 0 else 0
 
-        # 完整近20日 K 線（日期、開、高、低、收、量）
+        # 完整近20日 K 線（日期、開、高、低、收、量（張））
         kline_rows = df.tail(20)
-        kline_lines = "日期\t開\t高\t低\t收\t量\n"
+        kline_lines = "日期\t開\t高\t低\t收\t量(張)\n"
         for _, row in kline_rows.iterrows():
             kline_lines += (
                 f"{str(row.get('date',''))[:10]}\t"
                 f"{row.get('open',0)}\t{row.get('high',0)}\t"
                 f"{row.get('low',0)}\t{row.get('close',0)}\t"
-                f"{int(row.get('volume',0)):,}\n"
+                f"{int(row.get('volume',0)) // 1000:,}\n"
             )
 
         prompt = (
@@ -179,7 +179,7 @@ def _ai_explain(stock_id, stock_name, result, mode, df):
             f"【技術指標】\n"
             f"{price_label}：{result.close} 元\n"
             f"今日開盤：{today_open} 元　最高：{today_high} 元　最低：{today_low} 元\n"
-            f"成交量：{today_volume:,}（近20日均量 {avg_volume:,}，約均量的 {volume_ratio:.0f}%）\n"
+            f"成交量：{today_volume:,} 張（近20日均量 {avg_volume:,} 張，約均量的 {volume_ratio:.0f}%）\n"
             f"MA20：{result.ma20:.2f} 元（偏離 {result.pct_from_ma20:+.2f}%）\n"
             f"近20日最高收盤：{result.high20} 元（從高點下跌 {result.pullback_pct:.2f}%）\n\n"
             f"【近20日 K 線】\n"
