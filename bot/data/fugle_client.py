@@ -107,48 +107,97 @@ class FugleClient:
 
     def fetch_candles(self, stock_id: str, days: int = 60) -> pd.DataFrame:
         """
-        取得股票日 K 資料。
-        使用 FinMind API（Fugle marketdata v1.0 無免費日 K 端點）
+        取得股票日 K 資料（官方 fugle_marketdata SDK，historical/candles）。
+
+        注意：歷史日 K 端點通常落後一個交易日（盤後當日資料尚未入庫），
+        因此會額外用即時報價端點將「今日」資料補到 DataFrame 尾端，
+        確保盤後分析能取得當日收盤價與正確的 MA/高點。
+
         回傳 DataFrame with columns: date, open, high, low, close, volume
         """
+        from datetime import date, timedelta
+        from fugle_marketdata import RestClient
+
+        api_key = os.environ.get("FUGLE_API_KEY", "")
+        if not api_key:
+            print("[fugle] 無 FUGLE_API_KEY，無法取得 K 線資料")
+            return None
+
         try:
-            finmind_key = os.environ.get("FINMIND_API_KEY", "")
-            if not finmind_key:
-                print(f"[fugle] 無 FINMIND_API_KEY，無法取得 K 線資料")
+            end_date = date.today().isoformat()
+            start_date = (date.today() - timedelta(days=days)).isoformat()
+
+            client = RestClient(api_key=api_key)
+            resp = client.stock.historical.candles(
+                symbol=stock_id,
+                from_=start_date,
+                to=end_date,
+                fields="open,high,low,close,volume",
+            )
+            raw = resp.get("data", [])
+            if not raw:
+                print(f"[fugle] fetch_candles {stock_id} 歷史日 K 回傳為空")
                 return None
 
-            # 使用 FinMind API 取得日 K 資料
-            url = "https://api.finmindtrade.com/api/v4/data"
-            params = {
-                "dataset": "TaiwanStockPrice",
-                "data_id": stock_id,
-                "api_key": finmind_key,
-            }
+            df = pd.DataFrame(
+                raw, columns=["date", "open", "high", "low", "close", "volume"]
+            )
+            df = df.sort_values("date").reset_index(drop=True)
 
-            resp = requests.get(url, params=params, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
+            # 歷史端點可能尚未包含今日資料，用即時報價補上今日 K 線
+            df = self._append_today_candle(stock_id, df)
 
-            records = data.get("data", [])
-            if not records:
-                return None
-
-            # 轉換為 DataFrame，保留最近 days 筆
-            df_records = []
-            for record in records[-days:]:
-                df_records.append({
-                    "date": record.get("date"),
-                    "open": float(record.get("open", 0)),
-                    "high": float(record.get("high", 0)),
-                    "low": float(record.get("low", 0)),
-                    "close": float(record.get("close", 0)),
-                    "volume": int(record.get("volume", 0)),
-                })
-
-            return pd.DataFrame(df_records) if df_records else None
+            print(
+                f"[fugle] fetch_candles {stock_id} 取得 {len(df)} 筆，"
+                f"最後一筆 {df.iloc[-1]['date']} 收盤 {df.iloc[-1]['close']}"
+            )
+            return df
         except Exception as e:
             print(f"[fugle] fetch_candles {stock_id} 失敗：{e}")
             raise
+
+    def _append_today_candle(self, stock_id: str, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        若歷史日 K 的最後一筆不是今日，且即時報價已有今日成交，
+        則將今日 K 線（用即時報價組成）接到 DataFrame 尾端。
+        """
+        try:
+            from datetime import date
+
+            url = f"{self.base_url}/stock/intraday/quote/{stock_id}"
+            resp = requests.get(
+                url, headers={"X-API-KEY": self.api_key}, timeout=5
+            )
+            resp.raise_for_status()
+            q = resp.json()
+
+            quote_date = q.get("date")
+            today = date.today().isoformat()
+            close_price = q.get("closePrice") or q.get("lastPrice")
+
+            # 即時報價非今日、無收盤、或歷史已含今日 → 不補
+            if quote_date != today or close_price is None:
+                return df
+            if len(df) > 0 and str(df.iloc[-1]["date"]) == today:
+                return df
+
+            today_row = {
+                "date": today,
+                "open": float(q.get("openPrice", close_price)),
+                "high": float(q.get("highPrice", close_price)),
+                "low": float(q.get("lowPrice", close_price)),
+                "close": float(close_price),
+                "volume": int(q.get("total", {}).get("tradeVolume", 0))
+                if isinstance(q.get("total"), dict)
+                else 0,
+            }
+            print(f"[fugle] {stock_id} 補上今日即時 K 線：收盤 {close_price}")
+            return pd.concat(
+                [df, pd.DataFrame([today_row])], ignore_index=True
+            )
+        except Exception as e:
+            print(f"[fugle] {stock_id} 補今日 K 線失敗（忽略）：{e}")
+            return df
 
     def load_stock_map(self) -> Dict[str, str]:
         """
