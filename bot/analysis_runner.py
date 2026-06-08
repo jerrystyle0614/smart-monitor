@@ -80,7 +80,7 @@ def run_analysis_for_user(
         cost_str = f"（成本 {cost} 元，{(result.close - cost) / cost * 100:+.2f}%）"
 
     signal = _signal_line(result)
-    ai_explanation = _ai_explain(stock_id, stock_name, result, mode)
+    ai_explanation = _ai_explain(stock_id, stock_name, result, mode, df)
 
     if mode == AnalysisMode.PREMARKET:
         title = f"📊 盤前分析｜{now_str}"
@@ -126,8 +126,8 @@ def _signal_line(result) -> str:
     return "✅ 無異常，可續抱"
 
 
-def _ai_explain(stock_id, stock_name, result, mode):
-    # type: (str, str, SwingResult, AnalysisMode) -> str
+def _ai_explain(stock_id, stock_name, result, mode, df):
+    # type: (str, str, SwingResult, AnalysisMode, object) -> str
     """
     用一次 Claude API 呼叫，對 swing 結果生成白話解釋。
     失敗時靜默回傳空字串，不影響主訊息。
@@ -138,6 +138,7 @@ def _ai_explain(stock_id, stock_name, result, mode):
 
     try:
         import anthropic
+        import pandas as pd
 
         # 整理警報文字
         alert_lines = ""
@@ -149,24 +150,54 @@ def _ai_explain(stock_id, stock_name, result, mode):
         time_label = "盤前" if mode == AnalysisMode.PREMARKET else "盤後"
         price_label = "昨收" if mode == AnalysisMode.PREMARKET else "今日收盤"
 
+        # 今日（最後一筆）開/高/低/量
+        today_row = df.iloc[-1]
+        today_open   = float(today_row.get("open",   0))
+        today_high   = float(today_row.get("high",   0))
+        today_low    = float(today_row.get("low",    0))
+        today_volume = int(today_row.get("volume",   0))
+
+        # 平均量（近20日，排除今日）
+        recent = df.tail(21).iloc[:-1] if len(df) > 1 else df
+        avg_volume = int(recent["volume"].mean()) if len(recent) > 0 else 0
+        volume_ratio = (today_volume / avg_volume * 100) if avg_volume > 0 else 0
+
+        # 完整近20日 K 線（日期、開、高、低、收、量）
+        kline_rows = df.tail(20)
+        kline_lines = "日期\t開\t高\t低\t收\t量\n"
+        for _, row in kline_rows.iterrows():
+            kline_lines += (
+                f"{str(row.get('date',''))[:10]}\t"
+                f"{row.get('open',0)}\t{row.get('high',0)}\t"
+                f"{row.get('low',0)}\t{row.get('close',0)}\t"
+                f"{int(row.get('volume',0)):,}\n"
+            )
+
         prompt = (
             f"你是台股投資助理，用白話文向不懂技術分析的散戶解釋以下{time_label}分析結果。\n\n"
-            f"股票：{stock_name}（{stock_id}）\n"
+            f"【股票】{stock_name}（{stock_id}）\n\n"
+            f"【技術指標】\n"
             f"{price_label}：{result.close} 元\n"
+            f"今日開盤：{today_open} 元　最高：{today_high} 元　最低：{today_low} 元\n"
+            f"成交量：{today_volume:,}（近20日均量 {avg_volume:,}，約均量的 {volume_ratio:.0f}%）\n"
             f"MA20：{result.ma20:.2f} 元（偏離 {result.pct_from_ma20:+.2f}%）\n"
-            f"近20日最高收盤：{result.high20} 元（已回撤 {result.pullback_pct:.2f}%）\n\n"
-            f"系統偵測到的訊號：\n{alert_lines}\n"
-            f"請用 3～5 句話白話解釋：\n"
-            f"1. 現在股價處於什麼狀態\n"
-            f"2. 為什麼會亮紅燈或黃燈（若有）\n"
-            f"3. 投資人應該注意什麼\n\n"
-            f"語氣平穩，不要製造恐慌，不要給買賣建議，直接輸出說明文字即可（不用標題、不用編號）。"
+            f"近20日最高收盤：{result.high20} 元（從高點下跌 {result.pullback_pct:.2f}%）\n\n"
+            f"【近20日 K 線】\n"
+            f"{kline_lines}\n"
+            f"【系統偵測到的訊號】\n{alert_lines}\n"
+            f"請用白話文分析（5～8 句話）：\n"
+            f"1. 今日 K 線型態（長黑、長紅、跳空、十字線等）代表什麼意思\n"
+            f"2. 成交量是否異常（爆量、量縮），代表什麼\n"
+            f"3. 從近20日 K 線看出什麼走勢型態（頭肩頂、三角收斂、雙底等，若無明顯型態也要說明）\n"
+            f"4. 為什麼會亮紅燈或黃燈（若有）\n"
+            f"5. 投資人應該注意什麼\n\n"
+            f"語氣平穩，不要製造恐慌，不要給明確買賣建議，直接輸出說明文字即可（不用標題、不用編號）。"
         )
 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=300,
+            max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text.strip()
