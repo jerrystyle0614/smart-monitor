@@ -1,6 +1,6 @@
 """
 stock_monitor.py — 股票監控服務
-四步問答流程：股票代號→張數→均價→停損價（選填）
+四步問答流程：股票代號→股數→均價→停損價（選填）
 """
 
 from typing import Optional, Tuple, Any
@@ -23,7 +23,7 @@ class StockMonitorService(ScriptedService):
             ),
             Step(
                 field="total_shares",
-                question="持有幾張？",
+                question="持有幾股？（支援零股，例如：100 或 10.5）",
                 validate=self._validate_shares,
                 optional=False,
             ),
@@ -52,14 +52,14 @@ class StockMonitorService(ScriptedService):
 
     def _validate_shares(self, text):
         # type: (str) -> Tuple[bool, Any, str]
-        """驗證張數"""
+        """驗證股數（支援零股）"""
         try:
-            shares = int(text)
-            if shares < 1:
-                return False, None, "請輸入正整數，例如：5"
+            shares = float(text)
+            if shares <= 0:
+                return False, None, "請輸入正數，例如：100 或 10.5"
             return True, shares, ""
         except ValueError:
-            return False, None, "請輸入正整數，例如：5"
+            return False, None, "請輸入有效的數字，例如：100 或 10.5"
 
     def _validate_price(self, text):
         # type: (str) -> Tuple[bool, Any, str]
@@ -102,7 +102,7 @@ class StockMonitorService(ScriptedService):
             "📋 確認監控條件\n\n"
             "股票：{}（{}）\n"
             "收盤：{} 元（{:+.2f}%）\n"
-            "持股：{} 張\n"
+            "持股：{} 股\n"
             "均價：{} 元\n"
             "停損：{} {}\n\n"
             "輸入「確認」開始監控\n"

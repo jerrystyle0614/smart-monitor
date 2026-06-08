@@ -244,11 +244,12 @@ def _show_watchlist(uid, store, line, reply_token):
     for i, stock in enumerate(watchlist, 1):
         stock_id = stock.get("stock_id", "")
         stock_name = stock.get("stock_name", "")
+        shares = stock.get("total_shares")
         cost = stock.get("cost_price")
         stop_loss = stock.get("stop_loss_moving")
 
         msg += "{} {}（{}）\n".format(i, stock_name, stock_id)
-        msg += "   均價 {} 元".format(cost)
+        msg += "   持股 {} 股 | 均價 {} 元".format(shares, cost)
         if stop_loss:
             msg += " | 停損 {} 元".format(stop_loss)
         msg += "\n"
