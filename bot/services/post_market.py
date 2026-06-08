@@ -50,6 +50,10 @@ class PostMarketService(ScriptedService):
         stock_name = stock_info.get("stock_name", "") if isinstance(stock_info, dict) else ""
 
         try:
+            # 清除盤前快取，確保用最新的 K 線資料
+            if self.analysis_engine.cache:
+                self.analysis_engine.cache.delete(stock_id, "pre_market")
+
             # 獲取最近 20 日 K 線資料（包括今日收盤價）
             candle_data = self._fetch_candle_data(stock_id)
 

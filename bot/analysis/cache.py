@@ -67,3 +67,14 @@ class AnalysisCache:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"[cache] 儲存失敗：{e}")
+
+    def delete(self, stock_id: str, analysis_type: str) -> None:
+        """刪除快取結果"""
+        key = self._get_cache_key(stock_id, analysis_type)
+        path = self._get_cache_path(key)
+
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception as e:
+            print(f"[cache] 刪除失敗：{e}")
