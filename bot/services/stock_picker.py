@@ -55,7 +55,7 @@ class StockPickerService(ScriptedService):
             return
 
         stocks = cache.get("stocks", [])
-        msg = f"📈 Smart Monitor 每日選股推薦（{cache.get('date', '未知')}）\n\n"
+        msg = f"📈 Smart 助理 每日選股推薦（{cache.get('date', '未知')}）\n\n"
         msg += f"掃描發現 {len(stocks)} 支值得關注的股票：\n\n"
 
         for i, stock in enumerate(stocks[:10], 1):  # 最多顯示 10 支

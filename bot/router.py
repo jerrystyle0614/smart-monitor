@@ -50,13 +50,13 @@ def handle_follow(uid, store, line):
     """處理追蹤事件"""
     store.set_plan(uid, "pro")  # 測試時改為 pro 以看到全部功能
     line.push(uid,
-        "👋 歡迎使用 Smart Monitor！\n\n"
+        "👋 歡迎使用 Smart 助理！\n\n"
         "我是您的投資助理。\n"
         "提供股票監控、盤前/盤後分析、選股推薦等服務。"
     )
     line.push(uid,
         "=================\n"
-        "📊 Smart Monitor\n\n"
+        "📊 Smart 助理\n\n"
         "請選擇服務：\n"
         "1️⃣ 股票監控\n"
         "2️⃣ 盤前分析\n"
@@ -225,7 +225,7 @@ def _show_menu(uid, store, line, reply_token):
 
     menu = (
         "━━━━━━━━━━━━━━━━━━\n"
-        "📊 Smart Monitor\n\n"
+        "📊 Smart 助理\n\n"
         "請選擇服務：\n"
         "1️⃣ 股票監控\n"
     )
@@ -282,7 +282,7 @@ def _handle_help(uid, text, line, reply_token):
 
     # 主要說明
     main_help = (
-        "📖 Smart Monitor 使用說明\n\n"
+        "📖 Smart 助理 使用說明\n\n"
         "📊 主要功能：\n"
         "1️⃣ 股票監控 — 輸入『說明 1』了解詳情\n"
         "2️⃣ 盤前分析 — 輸入『說明 2』了解詳情\n"
