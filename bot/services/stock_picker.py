@@ -110,25 +110,30 @@ _SCAN_UNIVERSE = [
 
 def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
     """
-    技術面篩選：MA20 方向 + 收盤位置 + 成交量 + 回撤
+    技術面 + 籌碼面篩選：
+    - 技術面：MA20 方向 + 收盤位置 + 成交量 + 回撤
+    - 籌碼面：三大法人近 5 日淨買超方向
     依策略調整篩選條件嚴格度
     """
     from daily_data import fetch_candles
+    from bot.stock_picker.finmind_client import FinMindClient
     import pandas as pd
 
     # 依策略設定篩選參數
     params = {
-        "aggressive_short":  {"ma_above": True,  "pullback_max": 12, "vol_ratio_min": 1.1},
-        "momentum_mid":      {"ma_above": True,  "pullback_max": 8,  "vol_ratio_min": 1.0},
-        "defensive_band":    {"ma_above": True,  "pullback_max": 5,  "vol_ratio_min": 0.8},
-        "high_yield_stable": {"ma_above": False, "pullback_max": 8,  "vol_ratio_min": 0.5},
-        "dca_stable":        {"ma_above": False, "pullback_max": 10, "vol_ratio_min": 0.5},
-    }.get(strategy_type, {"ma_above": True, "pullback_max": 8, "vol_ratio_min": 1.0})
+        "aggressive_short":  {"ma_above": True,  "pullback_max": 12, "vol_ratio_min": 1.1, "require_institutional_buy": True},
+        "momentum_mid":      {"ma_above": True,  "pullback_max": 8,  "vol_ratio_min": 1.0, "require_institutional_buy": True},
+        "defensive_band":    {"ma_above": True,  "pullback_max": 5,  "vol_ratio_min": 0.8, "require_institutional_buy": False},
+        "high_yield_stable": {"ma_above": False, "pullback_max": 8,  "vol_ratio_min": 0.5, "require_institutional_buy": False},
+        "dca_stable":        {"ma_above": False, "pullback_max": 10, "vol_ratio_min": 0.5, "require_institutional_buy": False},
+    }.get(strategy_type, {"ma_above": True, "pullback_max": 8, "vol_ratio_min": 1.0, "require_institutional_buy": True})
 
+    finmind = FinMindClient()
     results = []
 
     for stock_id, stock_name in _SCAN_UNIVERSE:
         try:
+            # --- 技術面 ---
             df = fetch_candles(stock_id, days=60)
             if df is None or len(df) < 20:
                 continue
@@ -146,12 +151,34 @@ def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
             vol_ratio = today_vol / avg_vol if avg_vol > 0 else 0
             pct_from_ma = (close - ma20) / ma20 * 100 if ma20 > 0 else 0
 
-            # 篩選條件
             if params["ma_above"] and close <= ma20:
                 continue
             if pullback > params["pullback_max"]:
                 continue
             if vol_ratio < params["vol_ratio_min"]:
+                continue
+
+            # --- 籌碼面 ---
+            institutional = finmind.get_three_major_buyers(stock_id, days=5)
+            inst_buy_days = 0
+            inst_total_net = 0
+            inst_foreign_net = 0
+            inst_trust_net = 0
+            inst_label = "無資料"
+
+            if institutional:
+                inst_buy_days = institutional.get("consecutive_net_buy_days", 0)
+                inst_total_net = institutional.get("total_net", 0)
+                inst_foreign_net = institutional.get("foreign_net", 0)
+                inst_trust_net = institutional.get("trust_net", 0)
+
+                if inst_total_net > 0:
+                    inst_label = f"法人近5日淨買 {inst_total_net/1000:.0f}張"
+                else:
+                    inst_label = f"法人近5日淨賣 {abs(inst_total_net)/1000:.0f}張"
+
+            # 積極/動能策略要求法人淨買超
+            if params["require_institutional_buy"] and inst_total_net <= 0:
                 continue
 
             # 資金可否買整張
@@ -168,15 +195,20 @@ def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
                 "vol_ratio": round(vol_ratio, 2),
                 "one_lot_cost": int(one_lot_cost),
                 "can_buy_lot": can_buy_lot,
+                "inst_buy_days": inst_buy_days,
+                "inst_total_net": inst_total_net,
+                "inst_foreign_net": inst_foreign_net,
+                "inst_trust_net": inst_trust_net,
+                "inst_label": inst_label,
             })
 
         except Exception as e:
             print(f"[stock_picker] 篩選 {stock_id} 失敗：{e}")
             continue
 
-    # 依回撤從小到大排序（較穩的排前面）
-    results.sort(key=lambda x: x["pullback"])
-    return results[:20]  # 最多 20 檔給 AI 挑選
+    # 依法人連續買超天數（降序）+ 回撤（升序）排序
+    results.sort(key=lambda x: (-x["inst_buy_days"], x["pullback"]))
+    return results[:20]
 
 
 # ---------- AI 策略選擇 ----------
@@ -201,7 +233,10 @@ def _ai_pick(capital: float, period: str, risk: str,
                 f"- {s['stock_name']}（{s['stock_id']}）"
                 f" 現價 {s['close']} 元 | MA20 {s['ma20']} 元"
                 f" | 偏離 {s['pct_from_ma']:+.1f}% | 回撤 {s['pullback']:.1f}%"
-                f" | 量比 {s['vol_ratio']:.1f}x | {lot_note}\n"
+                f" | 量比 {s['vol_ratio']:.1f}x"
+                f" | {s.get('inst_label', '籌碼無資料')}"
+                f" | 連續買超 {s.get('inst_buy_days', 0)} 日"
+                f" | {lot_note}\n"
             )
 
         prompt = (
@@ -216,7 +251,8 @@ def _ai_pick(capital: float, period: str, risk: str,
             f"1. 資金夠不夠買整張（不夠的標注需零股）\n"
             f"2. 風險等級是否符合（保守者選 ETF 或大型股）\n"
             f"3. 技術面強弱（偏離 MA20 幅度、回撤幅度）\n"
-            f"4. 持有期間適合的流動性\n\n"
+            f"4. 籌碼面：法人連續買超天數越多越好，淨買超越大越好\n"
+            f"5. 持有期間適合的流動性\n\n"
             f"同時判斷整體策略名稱（例如：穩健波段型、高息防禦型、動能突破型等）\n\n"
             f"回覆 JSON，不要其他文字：\n"
             f'{{"strategy_name": "策略名稱",'
