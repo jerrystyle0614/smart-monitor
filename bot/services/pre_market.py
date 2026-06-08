@@ -49,6 +49,8 @@ class PreMarketService(ScriptedService):
         stock_id = stock_info.get("stock_id") if isinstance(stock_info, dict) else stock_info
         stock_name = stock_info.get("stock_name", "") if isinstance(stock_info, dict) else ""
 
+        line.reply(reply_token, "⏳ 正在進行盤前分析，請稍候...")
+
         try:
             # 獲取最近 20 日 K 線資料
             candle_data = self._fetch_candle_data(stock_id)

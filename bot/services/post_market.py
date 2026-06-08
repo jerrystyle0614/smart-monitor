@@ -49,6 +49,8 @@ class PostMarketService(ScriptedService):
         stock_id = stock_info.get("stock_id") if isinstance(stock_info, dict) else stock_info
         stock_name = stock_info.get("stock_name", "") if isinstance(stock_info, dict) else ""
 
+        line.reply(reply_token, "⏳ 正在進行盤後分析，請稍候...")
+
         try:
             # 清除盤前快取，確保用最新的 K 線資料
             if self.analysis_engine.cache:
