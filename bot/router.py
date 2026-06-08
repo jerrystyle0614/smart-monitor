@@ -103,6 +103,8 @@ def handle_message(uid, text, store, line, reply_token):
         _show_watchlist(uid, store, line, reply_token)
     elif text in ("說明", "help"):
         _show_help(uid, line, reply_token)
+    elif text.startswith("刪除 "):
+        _handle_delete(uid, text, store, line, reply_token)
     else:
         _show_menu(uid, store, line, reply_token)
 
@@ -270,3 +272,42 @@ def _show_help(uid, line, reply_token):
         "『說明』查看此說明"
     )
     line.reply(reply_token, msg)
+
+
+def _handle_delete(uid, text, store, line, reply_token):
+    # type: (str, str, object, object, str) -> None
+    """處理刪除監控命令（格式：刪除 [數字]）"""
+    try:
+        # 解析數字：「刪除 1」→ 取得「1」
+        parts = text.split()
+        if len(parts) != 2:
+            line.reply(reply_token, "❌ 格式錯誤。請輸入『刪除 [數字]』，例如：刪除 1")
+            return
+
+        index_str = parts[1]
+        stock_index = int(index_str) - 1  # 轉換為 0-based 索引
+
+        # 取得監控清單驗證索引
+        watchlist = store.get_watchlist(uid)
+        if not watchlist:
+            line.reply(reply_token, "📊 你還沒有監控任何股票。")
+            return
+
+        if stock_index < 0 or stock_index >= len(watchlist):
+            line.reply(reply_token, "❌ 索引超出範圍。請輸入 1 到 {} 之間的數字。".format(len(watchlist)))
+            return
+
+        # 取得要刪除的股票資訊
+        stock = watchlist[stock_index]
+        stock_id = stock.get("stock_id", "")
+        stock_name = stock.get("stock_name", "")
+
+        # 執行刪除
+        store.remove_stock(uid, stock_index)
+
+        line.reply(reply_token, "✅ 已刪除監控：{}（{}）".format(stock_name, stock_id))
+
+    except ValueError:
+        line.reply(reply_token, "❌ 請輸入有效的數字。例如：刪除 1")
+    except Exception as e:
+        line.reply(reply_token, "❌ 刪除失敗：{}".format(str(e)))
