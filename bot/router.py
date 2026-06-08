@@ -475,7 +475,8 @@ def _run_risk_analysis(uid, draft, line):
             f"持股：{shares:,} 股｜均價：{cost_price} 元\n"
             f"成本：{capital:,.0f} 元｜市值：{current_value:,.0f} 元\n"
             f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n"
-            f"停損參考：{stop_loss_price} 元\n\n"
+            f"停損參考：{stop_loss_price} 元\n"
+            f"（依據：MA20 {ma20:.1f} 元 × 97%，跌破均線再緩衝 3% 為警戒線）\n\n"
             f"💡 Smart 建議\n{ai_text}"
         )
         line.push(uid, msg)
