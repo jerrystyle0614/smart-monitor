@@ -102,7 +102,7 @@ def run_analysis_for_user(
         )
 
     if ai_explanation:
-        message += f"\n\n💬 AI 解讀\n{ai_explanation}"
+        message += f"\n\n💡 Smart 建議\n{ai_explanation}"
 
     # 整體顏色：有紅燈用紅、有黃燈用黃、否則用灰
     colors = [a.color for a in result.alerts]
