@@ -108,36 +108,44 @@ class FugleClient:
     def fetch_candles(self, stock_id: str, days: int = 60) -> pd.DataFrame:
         """
         取得股票日 K 資料。
+        使用 FinMind API（Fugle marketdata v1.0 無免費日 K 端點）
         回傳 DataFrame with columns: date, open, high, low, close, volume
         """
         try:
-            url = (
-                f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/candles/{stock_id}"
-            )
-            headers = {"X-API-KEY": self.api_key}
+            finmind_key = os.environ.get("FINMIND_API_KEY", "")
+            if not finmind_key:
+                print(f"[fugle] 無 FINMIND_API_KEY，無法取得 K 線資料")
+                return None
 
-            resp = requests.get(url, headers=headers, timeout=10)
+            # 使用 FinMind API 取得日 K 資料
+            url = "https://api.finmindtrade.com/api/v4/data"
+            params = {
+                "dataset": "TaiwanStockPrice",
+                "data_id": stock_id,
+                "api_key": finmind_key,
+            }
+
+            resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()
             data = resp.json()
 
-            # marketdata v1.0 返回的是 candles 陣列
-            candles = data.get("candles", [])
-            if not candles:
+            records = data.get("data", [])
+            if not records:
                 return None
 
             # 轉換為 DataFrame，保留最近 days 筆
-            records = []
-            for candle in candles[-days:]:
-                records.append({
-                    "date": candle.get("date"),
-                    "open": float(candle.get("open", 0)),
-                    "high": float(candle.get("high", 0)),
-                    "low": float(candle.get("low", 0)),
-                    "close": float(candle.get("close", 0)),
-                    "volume": int(candle.get("volume", 0)),
+            df_records = []
+            for record in records[-days:]:
+                df_records.append({
+                    "date": record.get("date"),
+                    "open": float(record.get("open", 0)),
+                    "high": float(record.get("high", 0)),
+                    "low": float(record.get("low", 0)),
+                    "close": float(record.get("close", 0)),
+                    "volume": int(record.get("volume", 0)),
                 })
 
-            return pd.DataFrame(records) if records else None
+            return pd.DataFrame(df_records) if df_records else None
         except Exception as e:
             print(f"[fugle] fetch_candles {stock_id} 失敗：{e}")
             raise
