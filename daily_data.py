@@ -52,4 +52,41 @@ def fetch_candles(symbol: str, days: int = 60) -> pd.DataFrame:
 
     df = pd.DataFrame(raw, columns=["date", "open", "high", "low", "close", "volume"])
     df = df.sort_values("date").reset_index(drop=True)
+
+    # 歷史日 K 端點通常落後一個交易日，盤後當日資料尚未入庫。
+    # 用即時報價端點把今日 K 線補到尾端，確保收盤價與 MA/高點為當日值。
+    df = _append_today_candle(symbol, df, api_key)
     return df
+
+
+def _append_today_candle(symbol: str, df: pd.DataFrame, api_key: str) -> pd.DataFrame:
+    """若歷史日 K 尾端非今日且即時報價已有今日成交，補上今日 K 線。"""
+    import requests
+
+    try:
+        url = f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{symbol}"
+        resp = requests.get(url, headers={"X-API-KEY": api_key}, timeout=5)
+        resp.raise_for_status()
+        q = resp.json()
+
+        today = date.today().isoformat()
+        close_price = q.get("closePrice") or q.get("lastPrice")
+
+        if q.get("date") != today or close_price is None:
+            return df
+        if len(df) > 0 and str(df.iloc[-1]["date"]) == today:
+            return df
+
+        today_row = {
+            "date": today,
+            "open": float(q.get("openPrice", close_price)),
+            "high": float(q.get("highPrice", close_price)),
+            "low": float(q.get("lowPrice", close_price)),
+            "close": float(close_price),
+            "volume": int(q.get("total", {}).get("tradeVolume", 0))
+            if isinstance(q.get("total"), dict) else 0,
+        }
+        return pd.concat([df, pd.DataFrame([today_row])], ignore_index=True)
+    except Exception as e:
+        print(f"[daily_data] {symbol} 補今日 K 線失敗（忽略）：{e}")
+        return df
