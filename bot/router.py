@@ -51,11 +51,11 @@ def handle_follow(uid, store, line):
     store.set_plan(uid, "pro")  # 測試時改為 pro 以看到全部功能
     line.push(uid,
         "👋 歡迎使用 Smart Monitor！\n\n"
-        "我是您的台股投資小助手。\n"
-        "提供股票監控、盤前/盤後分析、選股推薦等功能。"
+        "我是您的投資助理。\n"
+        "提供股票監控、盤前/盤後分析、選股推薦等服務。"
     )
     line.push(uid,
-        "━━━━━━━━━━━━━━━━━━\n"
+        "============\n"
         "📊 Smart Monitor\n\n"
         "請選擇服務：\n"
         "1️⃣ 股票監控\n"
@@ -63,7 +63,7 @@ def handle_follow(uid, store, line):
         "3️⃣ 盤後分析\n"
         "4️⃣ 選股推薦\n\n"
         "輸入數字選擇，或輸入『狀態』查看目前監控\n"
-        "━━━━━━━━━━━━━━━━━━"
+        "============"
     )
 
 
@@ -101,8 +101,8 @@ def handle_message(uid, text, store, line, reply_token):
         _handle_menu(uid, text, store, line, reply_token)
     elif text in ("狀態", "status"):
         _show_watchlist(uid, store, line, reply_token)
-    elif text in ("說明", "help"):
-        _show_help(uid, line, reply_token)
+    elif text.startswith("說明"):
+        _handle_help(uid, text, line, reply_token)
     elif text.startswith("刪除 "):
         _handle_delete(uid, text, store, line, reply_token)
     else:
@@ -258,20 +258,73 @@ def _show_watchlist(uid, store, line, reply_token):
     line.reply(reply_token, msg)
 
 
-def _show_help(uid, line, reply_token):
-    # type: (str, object, str) -> None
-    """顯示使用說明"""
-    msg = (
-        "📖 使用說明\n\n"
-        "1️⃣ 股票監控\n"
-        "   監控股票價格，達停損/目標價推播\n\n"
-        "2️⃣ 盤前分析\n"
-        "   獲取股票盤前技術面分析\n\n"
-        "3️⃣ 盤後分析\n"
-        "   獲取股票盤後技術面分析\n\n"
-        "『狀態』查看監控清單\n"
-        "『說明』查看此說明"
+def _handle_help(uid, text, line, reply_token):
+    # type: (str, str, object, str) -> None
+    """處理說明命令，支援『說明』或『說明 1』格式"""
+    parts = text.split()
+
+    # 主要說明
+    main_help = (
+        "📖 Smart Monitor 使用說明\n\n"
+        "📊 主要功能：\n"
+        "1️⃣ 股票監控 — 輸入『說明 1』了解詳情\n"
+        "2️⃣ 盤前分析 — 輸入『說明 2』了解詳情\n"
+        "3️⃣ 盤後分析 — 輸入『說明 3』了解詳情\n"
+        "4️⃣ 選股推薦 — 輸入『說明 4』了解詳情\n\n"
+        "🛠️ 常用指令：\n"
+        "『狀態』— 查看監控清單\n"
+        "『刪除 [數字]』— 移除監控股票"
     )
+
+    detail_helps = {
+        "1": (
+            "📖 股票監控詳細說明\n\n"
+            "功能：自動監控股票價格，當達到停損或目標價時推播提醒。\n\n"
+            "使用步驟：\n"
+            "1. 輸入『1』開始新增監控\n"
+            "2. 輸入股票名稱或代號\n"
+            "3. 輸入持有股數\n"
+            "4. 輸入買入均價\n"
+            "5. 輸入停損價（可選，輸入『跳過』略過）\n"
+            "6. 輸入『確認』完成設定\n\n"
+            "提示：最多可同時監控 3 檔股票"
+        ),
+        "2": (
+            "📖 盤前分析詳細說明\n\n"
+            "功能：每日 08:30 自動推播股票技術面分析與進場建議。\n\n"
+            "使用步驟：\n"
+            "1. 輸入『2』選擇盤前分析\n"
+            "2. 輸入要分析的股票名稱或代號\n"
+            "3. 系統自動分析並推播結果\n\n"
+            "分析內容：MA20 趨勢、支撐壓力、進場信號"
+        ),
+        "3": (
+            "📖 盤後分析詳細說明\n\n"
+            "功能：每日 13:35 自動推播股票技術面分析與出場建議。\n\n"
+            "使用步驟：\n"
+            "1. 輸入『3』選擇盤後分析\n"
+            "2. 輸入要分析的股票名稱或代號\n"
+            "3. 系統自動分析並推播結果\n\n"
+            "分析內容：今日表現、獲利了結點位、風險提示"
+        ),
+        "4": (
+            "📖 選股推薦詳細說明\n\n"
+            "功能：每日掃描全市場，推薦籌碼面 + 技術面優質股票。\n\n"
+            "使用步驟：\n"
+            "1. 輸入『4』選擇選股推薦\n"
+            "2. 系統自動掃描並推播推薦股票\n\n"
+            "篩選條件：主力進場、技術面突破、潛在獲利空間\n"
+            "⚠️ 此功能為 pro 方案專屬"
+        ),
+    }
+
+    # 檢查是否指定了服務編號
+    if len(parts) == 2:
+        service_num = parts[1]
+        msg = detail_helps.get(service_num, main_help)
+    else:
+        msg = main_help
+
     line.reply(reply_token, msg)
 
 
