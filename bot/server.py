@@ -9,7 +9,6 @@ import hashlib
 import hmac
 import json
 import os
-import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
@@ -31,17 +30,6 @@ logger = logging.getLogger(__name__)
 _seen_message_ids = collections.deque(maxlen=200)
 
 
-def _clear_user_data():
-    """清空所有使用者資料。僅在 CLEAR_ON_START=1 時執行，用於測試環境。"""
-    if os.environ.get("CLEAR_ON_START") != "1":
-        return
-    users_dir = Path("users")
-    if users_dir.exists():
-        shutil.rmtree(users_dir)
-    users_dir.mkdir()
-    print("[server] 使用者資料已清空（測試模式）")
-
-
 # 在 lifespan 之前初始化，確保 lifespan 函式可直接引用
 _store = UserStore()
 _line = LineClient()
@@ -51,7 +39,6 @@ _engine = None  # 由 lifespan 啟動後賦值
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _engine
-    _clear_user_data()
     # 從 Fugle 載入完整股票對照表
     try:
         client = FugleClient()
