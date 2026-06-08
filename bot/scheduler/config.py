@@ -25,6 +25,7 @@ class ScheduledJob:
 
 
 # 排程時間配置（以 UTC+8 時區設定）
+# 注意：盤前/盤後分析由 MonitorEngine 負責，不在此排程，避免重複推播。
 SCHEDULED_JOBS: List[ScheduledJob] = [
     ScheduledJob(
         name="stock_picker_daily",
@@ -33,24 +34,8 @@ SCHEDULED_JOBS: List[ScheduledJob] = [
         func=None,  # 稍後在 jobs.py 中實現
         description="每日 08:00 執行選股掃描並推播推薦股票"
     ),
-    ScheduledJob(
-        name="pre_market_analysis",
-        hour=8,
-        minute=30,
-        func=None,
-        description="每日 08:30 執行盤前分析並推播監控清單中的所有股票"
-    ),
-    ScheduledJob(
-        name="post_market_analysis",
-        hour=13,
-        minute=35,
-        func=None,
-        description="每日 13:35 執行盤後分析並推播監控清單中的所有股票"
-    ),
 ]
 
 # 功能開關
 ENABLE_SCHEDULER: bool = True
 ENABLE_STOCK_PICKER: bool = True  # 選股每日任務
-ENABLE_PRE_MARKET: bool = True     # 盤前分析
-ENABLE_POST_MARKET: bool = True    # 盤後分析

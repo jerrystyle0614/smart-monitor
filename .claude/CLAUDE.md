@@ -7,13 +7,11 @@
 
 ## 一、專案定位
 
-透過 LINE Bot 提供台股投資人三種服務：
+透過 LINE Bot 提供台股投資人四種服務：
 1. **股票監控**：設定持股條件，達到停損/目標價時即時推播
 2. **盤前分析**：每日 08:30 推播個股技術面分析與進場建議
 3. **盤後分析**：每日 13:35 推播個股技術面分析與出場建議
-
-未來規劃（尚未實作）：
-- **選股推薦**：每日自動掃描全市場，找出籌碼面 + 技術面符合條件的股票，AI 白話解釋原因
+4. **選股推薦**：使用者手動輸入條件（資金、持有期間、風險偏好），系統依條件套用對應策略篩選，AI 選出 5 檔並白話解釋（pro 方案專屬）
 
 目標使用者：**不懂技術面的一般投資人**，系統負責分析，AI 負責用白話解釋。
 
@@ -28,9 +26,10 @@
 | 台股即時報價 | Fugle REST API | `intraday/quote`，免費方案 |
 | 台股日K | Fugle REST API | `historical/candles`，免費方案 |
 | 股票名稱驗證 | Fugle REST API | 用代號查名稱，確保正確性 |
+| 籌碼面資料 | FinMind API | 三大法人買賣超（選股推薦用） |
 | 意圖判斷 | ~~Gemini API~~ | **Phase A 已移除，改為純數字選單** |
 | 欄位解析 | ~~Gemini API~~ | **Phase A 已移除，改為問答腳本引導** |
-| AI 分析 | Claude API | 技術面深度分析、進出場建議（Phase C） |
+| AI 分析 | Claude API | 個股波段白話解釋、選股推薦（從候選股選 5 檔並說明） |
 | 推播通知 | LINE push + Discord Webhook | 雙管道同步推播 |
 | Tunnel | Cloudflare Tunnel | 固定網址 smart.aurabizon.com |
 | Web Server | FastAPI + uvicorn | PORT 8000 |
@@ -118,6 +117,7 @@ smart-monitor/
 1️⃣ 股票監控
 2️⃣ 盤前分析
 3️⃣ 盤後分析
+4️⃣ 選股推薦（pro 專屬）
 
 輸入數字選擇服務
 ━━━━━━━━━━━━━━━━━━
@@ -158,15 +158,61 @@ class Step:
 
 ---
 
-## 五、未來 Phase 規劃
+## 五、選股推薦服務（已實作）
 
-### Phase B：選股推薦服務
+實作於 `bot/services/stock_picker.py`，為**手動觸發**的條件式選股，
+**非**自動掃描推播。使用者從選單選「4️⃣ 選股推薦」進入三步問答，
+系統依條件選股後只推播給該使用者。pro 方案專屬。
 
-- 資料來源：FinMind API（三大法人買賣超、融資融券）
-- 每日 08:00 掃描全市場
-- 篩選條件：籌碼面 + 技術面組合
-- Claude API 生成白話說明（「為什麼值得注意」+「風險提示」）
-- 推播給所有使用者
+> 注意：`bot/stock_picker/` 下的 `engine.py`、`scheduler.py` 為早期「每日 08:00 自動掃描推播」
+> 的舊架構，目前未啟用（`SchedulerManager` 雖保留 `stock_picker_daily` 入口，但 engine 傳 None 空轉）。
+> 實際運作的選股邏輯在 `bot/services/stock_picker.py`。
+
+### 問答腳本（3 題）
+
+```
+Step 1: 「你目前有多少資金可以投入？（元）」
+        驗證：正數
+
+Step 2: 「你希望持有多久？」
+        1️⃣ 短期（1～4 週）  2️⃣ 中期（1～3 個月）  3️⃣ 長期 / 定期定額
+        驗證：1、2 或 3
+
+Step 3: 「你對虧損的接受度？」
+        1️⃣ 保守（最多虧 5%）  2️⃣ 穩健（最多虧 10～15%）  3️⃣ 積極
+        驗證：1、2 或 3
+```
+
+### 選股流程
+
+```
+三題收齊
+   │
+   ▼
+依（持有期 + 風險偏好）對應出技術面策略
+   （aggressive_short / momentum_mid / defensive_band /
+     high_yield_stable / dca_stable）
+   │
+   ▼
+掃描預設股票池（_SCAN_UNIVERSE，約 30 檔，涵蓋權值股/ETF/中型科技/低價股）
+   ├── 技術面：MA20 方向、收盤位置、量比、回撤，依策略調整嚴格度
+   └── 籌碼面：FinMind 三大法人近 5 日淨買超（積極/動能策略要求淨買超）
+   │
+   ▼
+Claude（haiku）從候選股選出最適合的 5 檔 + 策略名稱 + 各檔推薦理由（回 JSON）
+   │
+   ▼
+格式化推播給該使用者（含可否買整張 / 零股提示）
+```
+
+### 限制與快取
+
+- **每日查詢上限**：每位使用者 10 次（`MAX_DAILY_QUERIES`），存於 `users/{uid}/picker_queries.json`
+- **當日快取**：以（日期 + 風險 + 持有期 + 資金級距）為 key 快取選股結果於 `cache/stock_picker/`，命中則直接回覆（仍計入查詢次數）
+
+---
+
+## 六、未來 Phase 規劃
 
 ### Phase C：AI 分析升級
 
@@ -176,14 +222,15 @@ class Step:
 
 ---
 
-## 六、環境變數
+## 七、環境變數
 
 | 變數 | 用途 |
 |------|------|
 | `FUGLE_API_KEY` | Fugle REST API 金鑰 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Bot 推播 token |
 | `LINE_CHANNEL_SECRET` | LINE Webhook 簽章驗證 |
-| `ANTHROPIC_API_KEY` | Claude API（Phase C 分析用） |
+| `ANTHROPIC_API_KEY` | Claude API（個股白話解釋、選股推薦） |
+| `FINMIND_API_KEY` | FinMind API 金鑰（選股籌碼面資料） |
 | `DISCORD_WEBHOOK_URL` | Discord 推播 |
 | `GEMINI_API_KEY` | Gemini API（Phase A 暫不使用） |
 | `CLEAR_ON_START` | `=1` 時啟動清空使用者資料（測試用） |
@@ -191,7 +238,7 @@ class Step:
 
 ---
 
-## 七、開發守則
+## 八、開發守則
 
 1. Python 3.9 相容：不用 `X | Y`、`list[str]`（類型提示用 `Optional`、`List`）
 2. 所有網路呼叫加 try-except，失敗只印警告，不崩潰

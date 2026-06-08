@@ -70,7 +70,6 @@ async def lifespan(app: FastAPI):
         scheduled_jobs = ScheduledJobs(
             user_store=_store,
             line_client=_line,
-            analysis_engine=None,  # 稍後由 Phase C 初始化
             stock_picker_engine=None,  # 稍後由 Phase B 初始化
         )
         scheduler_manager = SchedulerManager()
