@@ -24,20 +24,11 @@ class FugleClient:
     """Fugle API 統一客戶端"""
 
     def __init__(self):
-        raw_key = os.environ.get("FUGLE_API_KEY", "")
-        # 如果 API Key 是 Base64 編碼，先解碼
-        if raw_key:
-            try:
-                decoded = base64.b64decode(raw_key).decode('utf-8')
-                # 取第一個 UUID（通常是主要 API Key）
-                self.api_key = decoded.split()[0] if decoded else raw_key
-            except Exception:
-                self.api_key = raw_key
-        else:
-            self.api_key = ""
+        # Fugle API Key 直接使用環境變數值（Base64 格式），不需解碼
+        self.api_key = os.environ.get("FUGLE_API_KEY", "")
 
-        # 使用正確的 Fugle v0.3 realtime API
-        self.base_url = "https://api.fugle.tw/realtime/v0.3"
+        # 使用正確的 Fugle marketdata v1.0 API
+        self.base_url = "https://api.fugle.tw/marketdata/v1.0"
         self._stock_map = None  # 快取股票清單
 
     def get_quote(self, stock_id: str) -> Optional[Dict]:
@@ -47,23 +38,20 @@ class FugleClient:
         或 None（失敗）
         """
         try:
-            # 使用正確的參數格式：query string，不是 path parameter
-            url = f"{self.base_url}/intraday/quote"
-            params = {"symbolId": stock_id}
-            headers = {"X-FUGLE-APIKEY": self.api_key}
+            # 使用 marketdata v1.0 API
+            url = f"{self.base_url}/stock/intraday/quote/{stock_id}"
+            headers = {"X-API-KEY": self.api_key}
 
-            resp = requests.get(url, params=params, headers=headers, timeout=5)
+            resp = requests.get(url, headers=headers, timeout=5)
             resp.raise_for_status()
             data = resp.json()
 
-            info = data.get("data", {}).get("info", {})
-            quote = data.get("data", {}).get("quote", {})
-
+            # marketdata v1.0 的回應格式是扁平的，不是嵌套的
             return {
                 "stock_id": stock_id,
-                "stock_name": info.get("name", ""),
-                "close_price": float(quote.get("trade", {}).get("price", 0)),
-                "change_pct": float(quote.get("changePercent", 0)),
+                "stock_name": data.get("name", ""),
+                "close_price": float(data.get("closePrice", 0)),
+                "change_pct": float(data.get("changePercent", 0)),
             }
         except Exception as e:
             # 回退到 mock 資料（靜默處理，不顯示錯誤）
@@ -79,19 +67,16 @@ class FugleClient:
         """
         # 先試用代號查
         try:
-            url = f"{self.base_url}/intraday/quote"
-            params = {"symbolId": stock_id_or_name}
-            headers = {"X-FUGLE-APIKEY": self.api_key}
+            url = f"{self.base_url}/stock/intraday/quote/{stock_id_or_name}"
+            headers = {"X-API-KEY": self.api_key}
 
-            resp = requests.get(url, params=params, headers=headers, timeout=5)
+            resp = requests.get(url, headers=headers, timeout=5)
             resp.raise_for_status()
             data = resp.json()
 
             # 如果能成功查詢，則該股票存在
-            if data.get("data"):
-                info = data.get("data", {}).get("info", {})
-                name = info.get("name", stock_id_or_name)
-                return {"stock_id": stock_id_or_name, "stock_name": name}
+            name = data.get("name", stock_id_or_name)
+            return {"stock_id": stock_id_or_name, "stock_name": name}
         except Exception:
             pass
 
