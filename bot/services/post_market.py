@@ -50,14 +50,16 @@ class PostMarketService(ScriptedService):
         stock_name = stock_info.get("stock_name", "") if isinstance(stock_info, dict) else ""
 
         try:
-            # 獲取目前股價
-            quote = self.fugle_client.get_quote(stock_id)
-            current_price = quote.get("close_price", 0.0) if quote else 0.0
-
-            # 獲取最近 20 日 K 線資料
+            # 獲取最近 20 日 K 線資料（包括今日收盤價）
             candle_data = self._fetch_candle_data(stock_id)
 
             if candle_data:
+                # 從 K 線資料中提取今日收盤價（最後一筆）
+                df = self.fugle_client.fetch_candles(stock_id, days=20)
+                current_price = 0.0
+                if df is not None and len(df) > 0:
+                    current_price = float(df.iloc[-1].get("close", 0))
+
                 # 呼叫 AnalysisEngine 進行分析
                 analysis_result = self.analysis_engine.analyze_post_market(
                     stock_id=stock_id,
