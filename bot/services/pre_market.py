@@ -86,7 +86,7 @@ class PreMarketService(ScriptedService):
             print(f"[pre_market] 分析失敗：{e}")
             self._fallback_analysis(uid, stock_id, stock_name, line)
 
-        # 分析完後詢問持股，進行風險評估
+        # 分析完後設定風險評估狀態，等待使用者主動輸入持股數
         store.set_service_state(uid, "risk_assessment", None, {
             "stock_id": stock_id,
             "stock_name": stock_name,
@@ -97,7 +97,7 @@ class PreMarketService(ScriptedService):
             "💰 想做更精確的風險評估嗎？\n\n"
             "請輸入你目前持有幾股？\n"
             "例如：1000\n\n"
-            "（輸入『跳過』略過）"
+            "（輸入『跳過』略過風險評估）"
         )
 
     def _fetch_candle_data(self, stock_id: str) -> Optional[str]:

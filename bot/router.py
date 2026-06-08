@@ -349,40 +349,43 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
     # type: (str, str, object, object, str) -> None
     """處理風險評估兩步驟問答：ask_shares → ask_cost → 執行分析"""
     draft = store.get_draft(uid)
-    # step 用 draft 內的 _step 欄位判斷（避免 state.step 型別限制）
     step = draft.get("_step", "ask_shares")
-    stock_id = draft.get("stock_id", "")
-    stock_name = draft.get("stock_name", "")
 
     if text in ("跳過", "取消"):
         store.clear_service_state(uid)
         line.reply(reply_token, "已略過風險評估。")
         return
 
-    # --- 第一步：詢問持股數 ---
+    # --- 第一步：等待持股數輸入 ---
     if step == "ask_shares":
         try:
             shares = int(text.replace(",", "").replace("，", ""))
             if shares <= 0:
                 raise ValueError
         except ValueError:
-            line.reply(reply_token, "❌ 請輸入正整數，例如：1000\n\n請輸入你目前持有幾股？")
+            line.reply(reply_token,
+                "❌ 請輸入正整數，例如：1000\n\n"
+                "請輸入你目前持有幾股？\n（輸入『跳過』略過）"
+            )
             return
 
         draft["shares"] = shares
         draft["_step"] = "ask_cost"
         store.set_service_state(uid, "risk_assessment", None, draft, None)
-        line.reply(reply_token, "請輸入你的買入均價是多少元？\n例如：65")
+        line.reply(reply_token, "請輸入你的買入均價是多少元？\n例如：65\n\n（輸入『跳過』略過）")
         return
 
-    # --- 第二步：詢問均價 → 執行分析 ---
+    # --- 第二步：等待均價輸入 → 執行分析 ---
     if step == "ask_cost":
         try:
             cost_price = float(text.replace(",", "").replace("，", ""))
             if cost_price <= 0:
                 raise ValueError
         except ValueError:
-            line.reply(reply_token, "❌ 請輸入有效數字，例如：65\n\n請輸入你的買入均價是多少元？")
+            line.reply(reply_token,
+                "❌ 請輸入有效數字，例如：65\n\n"
+                "請輸入你的買入均價是多少元？\n（輸入『跳過』略過）"
+            )
             return
 
         draft["cost_price"] = cost_price
