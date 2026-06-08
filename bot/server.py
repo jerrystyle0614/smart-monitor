@@ -3,7 +3,9 @@ server.py — FastAPI webhook server
 接收 LINE 平台傳入的事件並路由到對應 handler
 """
 
+import asyncio
 import base64
+import collections
 import hashlib
 import hmac
 import json
@@ -25,6 +27,9 @@ from notifier import DiscordNotifier
 import logging
 
 logger = logging.getLogger(__name__)
+
+# LINE webhook retry 去重：記錄最近 200 個已處理的 message id
+_seen_message_ids = collections.deque(maxlen=200)
 
 
 def _clear_user_data():
@@ -120,22 +125,34 @@ async def webhook(request: Request):
         event_type = event.get("type")
         source = event.get("source", {})
         user_id = source.get("userId")
-        # 沒有 userId 的事件（例如群組未加好友）直接略過
         if not user_id:
             continue
 
         if event_type == "follow":
-            # 使用者加好友事件
             handle_follow(user_id, _store, _line)
 
         elif event_type == "message":
             msg = event.get("message", {})
-            # 只處理文字訊息，圖片/貼圖等一律略過
             if msg.get("type") != "text":
                 continue
+
+            # 去重：同一個 message id 只處理一次，防止 LINE retry 重複觸發
+            message_id = msg.get("id", "")
+            if message_id and message_id in _seen_message_ids:
+                logger.warning("[webhook] 略過重複 message_id={}".format(message_id))
+                continue
+            if message_id:
+                _seen_message_ids.append(message_id)
+
             text = msg.get("text", "")
             reply_token = event.get("replyToken", "")
-            handle_message(user_id, text, _store, _line, reply_token)
+
+            # 用 asyncio 背景執行，讓 webhook 立即回 200 避免 LINE retry
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                handle_message,
+                user_id, text, _store, _line, reply_token,
+            )
 
     return {"status": "ok"}
 
