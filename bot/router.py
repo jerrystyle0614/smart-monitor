@@ -225,7 +225,9 @@ def _show_menu(uid, store, line, reply_token):
     if plan == "pro":
         menu += "4️⃣ 選股推薦\n"
 
-    menu += "\n輸入數字選擇，或輸入『狀態』查看目前監控\n"
+    menu += "\n輸入數字選擇\n"
+    menu += "『狀態』— 查看監控清單\n"
+    menu += "『說明』或『說明 1~4』— 查看使用說明\n"
     menu += "━━━━━━━━━━━━━━━━━━"
 
     line.reply(reply_token, menu)
@@ -254,7 +256,10 @@ def _show_watchlist(uid, store, line, reply_token):
             msg += " | 停損 {} 元".format(stop_loss)
         msg += "\n"
 
-    msg += "\n可用指令：新增 / 修改 [數字] / 刪除 [數字]"
+    msg += "\n可用指令：\n"
+    msg += "『1』— 新增監控\n"
+    msg += "『刪除 [數字]』— 移除監控\n"
+    msg += "『說明 1~4』— 查看各服務說明"
     line.reply(reply_token, msg)
 
 
