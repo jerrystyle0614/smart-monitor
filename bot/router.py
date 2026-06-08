@@ -371,7 +371,7 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
         except ValueError:
             line.reply(reply_token,
                 "❌ 請輸入正整數，例如：1000\n\n"
-                "請輸入你目前持有幾股？\n（輸入『跳過』略過）"
+                "請輸入您目前 / 預計持有幾股？\n（輸入『跳過』略過）"
             )
             return
 

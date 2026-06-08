@@ -97,7 +97,7 @@ class PreMarketService(ScriptedService):
         }, None)
         line.push(uid,
             "💰 想做更精確的風險評估嗎？\n\n"
-            "請輸入你目前持有幾股？\n"
+            "請輸入您目前 / 預計持有幾股？\n"
             "例如：1000\n\n"
             "（輸入『跳過』略過風險評估）"
         )
