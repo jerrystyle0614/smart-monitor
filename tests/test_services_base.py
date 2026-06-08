@@ -42,7 +42,7 @@ class MockService(ScriptedService):
         self.on_complete_called = False
         self.on_complete_draft = None
 
-    def on_complete(self, uid, draft, store, line):
+    def on_complete(self, uid, draft, store, line, reply_token=""):
         """覆蓋完成邏輯"""
         self.on_complete_called = True
         self.on_complete_draft = draft
@@ -68,7 +68,8 @@ def test_start_shows_first_question(service, mock_store, mock_line):
     service.start("U123", mock_store, mock_line)
     mock_store.set_service_state.assert_called()
     mock_line.reply.assert_called()
-    call_args = mock_line.reply.call_args[0][0]
+    # _show_step 以 reply(reply_token, prompt) 呼叫，問題文字在第二個位置參數
+    call_args = mock_line.reply.call_args[0][1]
     assert "問題 1" in call_args
 
 

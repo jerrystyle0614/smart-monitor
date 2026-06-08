@@ -25,9 +25,20 @@ def mock_line():
 
 
 def test_handle_follow_sends_welcome(mock_store, mock_line):
-    """follow 事件應發送歡迎訊息"""
+    """新使用者 follow 事件應 push 歡迎訊息與服務選單"""
+    # get_plan 回 "free" 代表尚未初始化的新使用者
+    mock_store.get_plan.return_value = "free"
     handle_follow("U123", mock_store, mock_line)
-    assert mock_line.reply.call_count >= 1
+    assert mock_line.push.call_count >= 1
+    pushed = "".join(str(c) for c in mock_line.push.call_args_list)
+    assert "歡迎" in pushed
+
+
+def test_handle_follow_skips_when_already_registered(mock_store, mock_line):
+    """已初始化的使用者重複 follow 不應再推歡迎訊息（去重）"""
+    mock_store.get_plan.return_value = "pro"
+    handle_follow("U123", mock_store, mock_line)
+    mock_line.push.assert_not_called()
 
 
 def test_handle_message_cooldown_blocks(mock_store, mock_line):

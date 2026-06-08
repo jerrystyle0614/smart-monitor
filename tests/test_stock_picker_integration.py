@@ -217,44 +217,39 @@ class TestStockPickerPipeline:
 class TestStockPickerServiceIntegration:
     """StockPickerService 整合測試"""
 
-    def test_service_start_with_empty_cache(self):
-        """無快取時應顯示提示訊息"""
+    def test_service_start_shows_first_question(self):
+        """start() 應初始化問答狀態並顯示第一題（資金）"""
         from bot.services.stock_picker import StockPickerService
 
         service = StockPickerService()
         mock_store = MagicMock()
         mock_line = MagicMock()
 
-        with patch("bot.services.stock_picker.load_picker_cache", return_value=None):
-            service.start("U123", mock_store, mock_line)
+        service.start("U123", mock_store, mock_line)
 
+        # 進入問答狀態
+        mock_store.set_service_state.assert_called()
+        # 顯示步驟 1／3：詢問資金
         mock_line.reply.assert_called()
         call_text = str(mock_line.reply.call_args)
-        assert "掃描尚未開始" in call_text
+        assert "步驟 1" in call_text
+        assert "資金" in call_text
 
-    def test_service_start_with_cache(self):
-        """有快取時應顯示推薦清單"""
+    def test_service_completes_with_three_answers(self):
+        """三題答完後 on_complete 應執行選股流程（達每日上限時回覆提示）"""
         from bot.services.stock_picker import StockPickerService
 
         service = StockPickerService()
         mock_store = MagicMock()
         mock_line = MagicMock()
 
-        cache = {
-            "date": "2026-06-07",
-            "stocks": [
-                {
-                    "stock_id": "2330",
-                    "stock_name": "台積電",
-                    "reasons": {"fundamental": "買超", "technical": "MA20 上升"},
-                    "risks": "跌破 MA20"
-                }
-            ]
-        }
+        draft = {"capital": 50000.0, "period": "2", "risk": "2"}
 
-        with patch("bot.services.stock_picker.load_picker_cache", return_value=cache):
-            service.start("U123", mock_store, mock_line)
+        # 強制視為已達每日查詢上限，避免實際呼叫 Fugle/FinMind/Claude
+        with patch("bot.services.stock_picker._get_query_count", return_value=999):
+            service.on_complete("U123", draft, mock_store, mock_line, "token")
 
+        # 清除問答狀態並回覆上限提示
+        mock_store.clear_service_state.assert_called_once_with("U123")
         mock_line.reply.assert_called()
-        call_text = str(mock_line.reply.call_args)
-        assert "2330" in call_text or "台積電" in call_text
+        assert "上限" in str(mock_line.reply.call_args)

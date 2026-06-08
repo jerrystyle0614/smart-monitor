@@ -36,7 +36,7 @@ def test_get_three_major_buyers_success(client):
         result = client.get_three_major_buyers("2330", days=3)
 
     assert result is not None
-    assert "consecutive_buy_days" in result or "data" in result
+    assert "consecutive_net_buy_days" in result
 
 
 def test_get_three_major_buyers_api_failure(client):

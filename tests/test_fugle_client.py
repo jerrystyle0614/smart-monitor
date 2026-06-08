@@ -16,13 +16,11 @@ def client():
 
 def test_get_quote_success(client):
     """get_quote 應回傳股票報價資訊"""
-    mock_response = {
-        "data": {
-            "info": {"name": "台積電"},
-            "quote": {"closePrice": 920.0, "changePercent": -0.84}
-        }
-    }
-    with patch("bot.data.fugle_client.requests.get", return_value=MagicMock(json=lambda: mock_response)):
+    # marketdata v1.0 回應為扁平結構
+    mock_response = {"name": "台積電", "closePrice": 920.0, "changePercent": -0.84}
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = mock_response
+    with patch("bot.data.fugle_client.requests.get", return_value=mock_resp):
         result = client.get_quote("2330")
     assert result is not None
     assert result["stock_id"] == "2330"
@@ -32,15 +30,16 @@ def test_get_quote_success(client):
 
 
 def test_get_quote_api_failure(client):
-    """get_quote API 失敗時回傳 None"""
+    """get_quote API 失敗且無 mock 回退時回傳 None"""
+    # 用不在 MOCK_QUOTES 的代號，確保失敗時不會回退到 mock 資料
     with patch("bot.data.fugle_client.requests.get", side_effect=Exception("API Error")):
-        result = client.get_quote("2330")
+        result = client.get_quote("0000")
     assert result is None
 
 
 def test_verify_stock_by_code(client):
-    """verify_stock 優先用代號查詢"""
-    mock_response = {"data": {"info": {"name": "台積電"}}}
+    """verify_stock 優先用代號查詢（marketdata v1.0 扁平結構）"""
+    mock_response = {"name": "台積電", "closePrice": 920.0}
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = mock_response
@@ -59,21 +58,30 @@ def test_verify_stock_not_found(client):
 
 
 def test_fetch_candles_success(client):
-    """fetch_candles 應回傳 DataFrame"""
-    with patch("bot.data.fugle_client.pd.read_csv") as mock_read:
-        mock_read.return_value = pd.DataFrame({
-            "date": ["2026-01-01", "2026-01-02"],
-            "close": [100.0, 101.0],
-            "volume": [1000, 1100]
-        })
-        result = client.fetch_candles("2330", days=60)
+    """fetch_candles 應回傳 DataFrame（官方 fugle_marketdata SDK）"""
+    candle_data = {
+        "data": [
+            {"date": "2026-01-01", "open": 99.0, "high": 101.0, "low": 98.0, "close": 100.0, "volume": 1000},
+            {"date": "2026-01-02", "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1100},
+        ]
+    }
+    mock_rest = MagicMock()
+    mock_rest.stock.historical.candles.return_value = candle_data
+
+    with patch("fugle_marketdata.RestClient", return_value=mock_rest):
+        # 讓 _append_today_candle 的即時報價呼叫靜默失敗，回傳原 df
+        with patch("bot.data.fugle_client.requests.get", side_effect=Exception("no intraday")):
+            result = client.fetch_candles("2330", days=60)
+
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 2
 
 
 def test_fetch_candles_failure(client):
     """fetch_candles 失敗時應拋出例外"""
-    with patch("bot.data.fugle_client.pd.read_csv", side_effect=Exception("Download failed")):
+    mock_rest = MagicMock()
+    mock_rest.stock.historical.candles.side_effect = Exception("Download failed")
+    with patch("fugle_marketdata.RestClient", return_value=mock_rest):
         with pytest.raises(Exception):
             client.fetch_candles("2330", days=60)
 
