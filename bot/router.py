@@ -55,7 +55,7 @@ def handle_follow(uid, store, line):
         "提供股票監控、盤前/盤後分析、選股推薦等服務。"
     )
     line.push(uid,
-        "============\n"
+        "=================\n"
         "📊 Smart Monitor\n\n"
         "請選擇服務：\n"
         "1️⃣ 股票監控\n"
@@ -65,7 +65,7 @@ def handle_follow(uid, store, line):
         "輸入數字選擇\n"
         "『狀態』— 查看監控清單\n"
         "『說明』或『說明 1~4』— 查看使用說明\n"
-        "============"
+        "================="
     )
 
 
@@ -74,9 +74,10 @@ def handle_message(uid, text, store, line, reply_token):
     """
     處理訊息。主路由邏輯：
     1. 冷卻檢查
-    2. 問答進行中 → 交給服務處理
-    3. stock_monitor_confirm 狀態 → 等待確認
-    4. 其他 → 顯示選單或解析命令
+    2. 確保用戶有 plan（若無則設為 pro）
+    3. 問答進行中 → 交給服務處理
+    4. stock_monitor_confirm 狀態 → 等待確認
+    5. 其他 → 顯示選單或解析命令
     """
     text = text.strip()
 
@@ -84,6 +85,10 @@ def handle_message(uid, text, store, line, reply_token):
     if store.check_cooldown(uid):
         line.reply("⏱️ 傳送訊息過於頻繁，請稍後再試。")
         return
+
+    # 確保用戶有設置 plan（防止舊用戶被鎖定在 free 方案）
+    if store.get_plan(uid) == "free":
+        store.set_plan(uid, "pro")
 
     # 檢查問答是否進行中
     current_service = store.get_current_service(uid)
