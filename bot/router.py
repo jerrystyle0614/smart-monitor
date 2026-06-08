@@ -427,8 +427,21 @@ def _run_risk_analysis(uid, draft, line):
 
         # 停損參考：跌破 MA20 再 3%
         stop_loss_price = round(ma20 * 0.97, 1)
-        loss_at_stop = shares * (close - stop_loss_price)      # 若停損損失金額
+        loss_at_stop = shares * (close - stop_loss_price)
         loss_pct_at_stop = (close - stop_loss_price) / close * 100
+
+        # 停利目標：第一目標 = 近20日高點，第二目標 = 高點延伸 8%
+        tp1_price = round(high20, 1)
+        tp2_price = round(high20 * 1.08, 1)
+        gain_at_tp1 = shares * (tp1_price - close)
+        gain_at_tp2 = shares * (tp2_price - close)
+        gain_pct_tp1 = (tp1_price - close) / close * 100
+        gain_pct_tp2 = (tp2_price - close) / close * 100
+
+        # 風險報酬比（以停損損失 vs 停利一獲利計算）
+        risk_amt = abs(loss_at_stop)
+        reward_amt = abs(gain_at_tp1)
+        rr_ratio = round(reward_amt / risk_amt, 1) if risk_amt > 0 else 0
 
         alert_lines = ""
         for a in result.alerts:
@@ -450,21 +463,24 @@ def _run_risk_analysis(uid, draft, line):
             f"【未實現損益】{unrealized_pnl:+,.0f} 元（{unrealized_pct:+.2f}%）\n"
             f"【MA20】{ma20:.2f} 元（偏離 {result.pct_from_ma20:+.2f}%）\n"
             f"【近20日高點】{high20} 元（已回撤 {result.pullback_pct:.2f}%）\n"
-            f"【停損參考價】{stop_loss_price} 元（若觸及，損失約 {loss_at_stop:,.0f} 元，"
-            f"{loss_pct_at_stop:.1f}%）\n"
+            f"【停損參考價】{stop_loss_price} 元（MA20 × 97%，若觸及損失約 {loss_at_stop:,.0f} 元）\n"
+            f"【停利第一目標】{tp1_price} 元（近20日高點，潛在獲利約 {gain_at_tp1:,.0f} 元）\n"
+            f"【停利第二目標】{tp2_price} 元（高點延伸 8%，潛在獲利約 {gain_at_tp2:,.0f} 元）\n"
+            f"【風險報酬比】1 : {rr_ratio}（停損 vs 停利一）\n"
             f"【系統訊號】\n{alert_lines}\n"
-            f"請用白話文提供風險評估（5～7 句話）：\n"
+            f"請用白話文提供風險評估（6～8 句話）：\n"
             f"1. 目前持股損益狀況說明\n"
-            f"2. 建議的停損價位與邏輯\n"
-            f"3. 目前風險等級（低/中/高）及原因\n"
-            f"4. 具體的資金保護建議（減碼、設停損、續抱等）\n\n"
+            f"2. 停損設定的邏輯與原因\n"
+            f"3. 停利目標的合理性說明\n"
+            f"4. 風險報酬比是否值得持有\n"
+            f"5. 目前風險等級（低/中/高）及具體建議\n\n"
             f"語氣平穩，數字要具體，直接輸出說明文字（不用標題、不用編號）。"
         )
 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=400,
+            max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )
         ai_text = response.content[0].text.strip()
@@ -474,9 +490,16 @@ def _run_risk_analysis(uid, draft, line):
             f"📊 風險評估｜{stock_name}（{stock_id}）\n\n"
             f"持股：{shares:,} 股｜均價：{cost_price} 元\n"
             f"成本：{capital:,.0f} 元｜市值：{current_value:,.0f} 元\n"
-            f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n"
-            f"停損參考：{stop_loss_price} 元\n"
-            f"（依據：MA20 {ma20:.1f} 元 × 97%，跌破均線再緩衝 3% 為警戒線）\n\n"
+            f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n\n"
+            f"🛡️ 停損：{stop_loss_price} 元\n"
+            f"   依據：MA20 {ma20:.1f} 元 × 97%\n"
+            f"   若觸及：損失約 {loss_at_stop:,.0f} 元（{loss_pct_at_stop:.1f}%）\n\n"
+            f"🎯 停利目標：\n"
+            f"   第一目標：{tp1_price} 元（近20日高點）\n"
+            f"   　潛在獲利：{gain_at_tp1:+,.0f} 元（{gain_pct_tp1:+.1f}%）\n"
+            f"   第二目標：{tp2_price} 元（高點延伸 8%）\n"
+            f"   　潛在獲利：{gain_at_tp2:+,.0f} 元（{gain_pct_tp2:+.1f}%）\n\n"
+            f"⚖️ 風險報酬比：1 : {rr_ratio}\n\n"
             f"💡 Smart 建議\n{ai_text}"
         )
         line.push(uid, msg)
