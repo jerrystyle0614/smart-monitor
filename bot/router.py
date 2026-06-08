@@ -347,36 +347,70 @@ def _handle_help(uid, text, line, reply_token):
 
 def _handle_risk_assessment(uid, text, store, line, reply_token):
     # type: (str, str, object, object, str) -> None
-    """處理風險評估的資金輸入"""
-    import os
-    import anthropic
-
+    """處理風險評估兩步驟問答：ask_shares → ask_cost → 執行分析"""
     draft = store.get_draft(uid)
+    # step 用 draft 內的 _step 欄位判斷（避免 state.step 型別限制）
+    step = draft.get("_step", "ask_shares")
     stock_id = draft.get("stock_id", "")
     stock_name = draft.get("stock_name", "")
-    analysis_mode = draft.get("analysis_mode", "post_market")
-
-    store.clear_service_state(uid)
 
     if text in ("跳過", "取消"):
+        store.clear_service_state(uid)
         line.reply(reply_token, "已略過風險評估。")
         return
 
-    try:
-        capital = float(text.replace(",", "").replace("，", ""))
-        if capital <= 0:
-            raise ValueError
-    except ValueError:
-        line.reply(reply_token, "❌ 請輸入有效的金額數字，例如：50000")
+    # --- 第一步：詢問持股數 ---
+    if step == "ask_shares":
+        try:
+            shares = int(text.replace(",", "").replace("，", ""))
+            if shares <= 0:
+                raise ValueError
+        except ValueError:
+            line.reply(reply_token, "❌ 請輸入正整數，例如：1000\n\n請輸入你目前持有幾股？")
+            return
+
+        draft["shares"] = shares
+        draft["_step"] = "ask_cost"
         store.set_service_state(uid, "risk_assessment", None, draft, None)
+        line.reply(reply_token, "請輸入你的買入均價是多少元？\n例如：65")
         return
 
-    line.reply(reply_token, "⏳ 正在分析風險，請稍候...")
+    # --- 第二步：詢問均價 → 執行分析 ---
+    if step == "ask_cost":
+        try:
+            cost_price = float(text.replace(",", "").replace("，", ""))
+            if cost_price <= 0:
+                raise ValueError
+        except ValueError:
+            line.reply(reply_token, "❌ 請輸入有效數字，例如：65\n\n請輸入你的買入均價是多少元？")
+            return
+
+        draft["cost_price"] = cost_price
+        store.clear_service_state(uid)
+        line.reply(reply_token, "⏳ 正在分析風險，請稍候...")
+        _run_risk_analysis(uid, draft, line)
+        return
+
+    # 未知狀態，清除
+    store.clear_service_state(uid)
+    _show_menu(uid, store, line, reply_token)
+
+
+def _run_risk_analysis(uid, draft, line):
+    # type: (str, dict, object) -> None
+    """執行 AI 風險評估並推播結果"""
+    import os
+    import anthropic
+    from daily_data import fetch_candles
+    from swing_strategy import analyze_swing
+
+    stock_id = draft.get("stock_id", "")
+    stock_name = draft.get("stock_name", "")
+    shares = draft.get("shares", 0)
+    cost_price = draft.get("cost_price", 0.0)
+    analysis_mode = draft.get("analysis_mode", "post_market")
 
     try:
-        from daily_data import fetch_candles
-        from swing_strategy import analyze_swing
-
         df = fetch_candles(stock_id, days=60)
         result = analyze_swing(df, lookback=20, ma_days=20,
                                pullback_warn=5.0, pullback_alert=8.0, ma_warn=2.0)
@@ -384,41 +418,47 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
         close = result.close
         ma20 = result.ma20
         high20 = result.high20
-        pullback_pct = result.pullback_pct
 
-        # 風險評估計算
-        stop_loss_price = round(ma20 * 0.97, 1)  # 跌破 MA20 再 3% 作為停損參考
-        max_loss_pct = (close - stop_loss_price) / close * 100
-        max_loss_amt = capital * abs(max_loss_pct) / 100
-        time_label = "盤前" if analysis_mode == "pre_market" else "盤後"
+        # 損益計算
+        capital = shares * cost_price                          # 投入成本
+        current_value = shares * close                         # 目前市值
+        unrealized_pnl = current_value - capital               # 未實現損益
+        unrealized_pct = unrealized_pnl / capital * 100       # 損益 %
+
+        # 停損參考：跌破 MA20 再 3%
+        stop_loss_price = round(ma20 * 0.97, 1)
+        loss_at_stop = shares * (close - stop_loss_price)      # 若停損損失金額
+        loss_pct_at_stop = (close - stop_loss_price) / close * 100
+
+        alert_lines = ""
+        for a in result.alerts:
+            alert_lines += f"- {a.title}：{a.message}\n"
+        if not alert_lines:
+            alert_lines = "- 無警示\n"
 
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             line.push(uid, "❌ 無法進行 AI 風險評估（API Key 未設定）")
             return
 
-        alert_lines = ""
-        for a in result.alerts:
-            alert_lines += f"- {a.title}：{a.title}\n"
-        if not alert_lines:
-            alert_lines = "- 無警示\n"
-
         prompt = (
             f"你是台股風險管理顧問，幫散戶做投資風險評估。\n\n"
             f"【股票】{stock_name}（{stock_id}）\n"
-            f"【投入資金】{capital:,.0f} 元\n"
-            f"【目前收盤】{close} 元\n"
+            f"【持股】{shares:,} 股，均價 {cost_price} 元\n"
+            f"【投入成本】{capital:,.0f} 元\n"
+            f"【目前收盤】{close} 元，市值 {current_value:,.0f} 元\n"
+            f"【未實現損益】{unrealized_pnl:+,.0f} 元（{unrealized_pct:+.2f}%）\n"
             f"【MA20】{ma20:.2f} 元（偏離 {result.pct_from_ma20:+.2f}%）\n"
-            f"【近20日高點】{high20} 元（已回撤 {pullback_pct:.2f}%）\n"
-            f"【停損參考價】{stop_loss_price} 元（若觸及估計損失 {max_loss_pct:.1f}%，"
-            f"約 {max_loss_amt:,.0f} 元）\n"
+            f"【近20日高點】{high20} 元（已回撤 {result.pullback_pct:.2f}%）\n"
+            f"【停損參考價】{stop_loss_price} 元（若觸及，損失約 {loss_at_stop:,.0f} 元，"
+            f"{loss_pct_at_stop:.1f}%）\n"
             f"【系統訊號】\n{alert_lines}\n"
             f"請用白話文提供風險評估（5～7 句話）：\n"
-            f"1. 以目前 {capital:,.0f} 元的部位，面臨的風險金額大概是多少\n"
+            f"1. 目前持股損益狀況說明\n"
             f"2. 建議的停損價位與邏輯\n"
-            f"3. 目前持有這筆資金的風險等級（低/中/高）\n"
-            f"4. 具體的資金保護建議（例如減碼、設停損、續抱等）\n\n"
-            f"語氣平穩，數字要具體，不要空泛，直接輸出說明文字（不用標題、不用編號）。"
+            f"3. 目前風險等級（低/中/高）及原因\n"
+            f"4. 具體的資金保護建議（減碼、設停損、續抱等）\n\n"
+            f"語氣平穩，數字要具體，直接輸出說明文字（不用標題、不用編號）。"
         )
 
         client = anthropic.Anthropic(api_key=api_key)
@@ -429,11 +469,13 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
         )
         ai_text = response.content[0].text.strip()
 
+        pnl_sign = "+" if unrealized_pnl >= 0 else ""
         msg = (
             f"📊 風險評估｜{stock_name}（{stock_id}）\n\n"
-            f"投入資金：{capital:,.0f} 元\n"
-            f"停損參考：{stop_loss_price} 元\n"
-            f"最大風險：約 {max_loss_amt:,.0f} 元（{abs(max_loss_pct):.1f}%）\n\n"
+            f"持股：{shares:,} 股｜均價：{cost_price} 元\n"
+            f"成本：{capital:,.0f} 元｜市值：{current_value:,.0f} 元\n"
+            f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n"
+            f"停損參考：{stop_loss_price} 元\n\n"
             f"💡 Smart 建議\n{ai_text}"
         )
         line.push(uid, msg)
