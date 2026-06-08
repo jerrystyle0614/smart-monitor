@@ -434,8 +434,23 @@ def _run_risk_analysis(uid, draft, line):
         unrealized_pnl = current_value - capital               # 未實現損益
         unrealized_pct = unrealized_pnl / capital * 100       # 損益 %
 
-        # 停損參考：跌破 MA20 再 3%
-        stop_loss_price = round(ma20 * 0.97, 1)
+        # 停損參考邏輯：
+        #   均價 < MA20（成本在均線下方）→ 用 MA20 × 97%（技術面防守）
+        #   均價 >= MA20（已在均線上方獲利）→ 用均價 × 97%（保護成本）
+        #   無論如何，停損不得高於目前收盤（已在虧損中時取較低值）
+        if cost_price < ma20:
+            stop_loss_base = ma20
+            stop_loss_reason = "MA20 {:.1f} 元 × 97%（均價低於均線，技術面防守）".format(ma20)
+        else:
+            stop_loss_base = cost_price
+            stop_loss_reason = "均價 {:.1f} 元 × 97%（均價高於均線，保護成本）".format(cost_price)
+
+        stop_loss_price = round(stop_loss_base * 0.97, 1)
+        # 若停損已高於現價（已在虧損），改用現價 × 97% 以實際損失為準
+        if stop_loss_price > close:
+            stop_loss_price = round(close * 0.97, 1)
+            stop_loss_reason = "收盤 {:.1f} 元 × 97%（目前虧損，以現價計算）".format(close)
+
         loss_at_stop = shares * (close - stop_loss_price)
         loss_pct_at_stop = (close - stop_loss_price) / close * 100
 
@@ -472,7 +487,7 @@ def _run_risk_analysis(uid, draft, line):
             f"【未實現損益】{unrealized_pnl:+,.0f} 元（{unrealized_pct:+.2f}%）\n"
             f"【MA20】{ma20:.2f} 元（偏離 {result.pct_from_ma20:+.2f}%）\n"
             f"【近20日高點】{high20} 元（已回撤 {result.pullback_pct:.2f}%）\n"
-            f"【停損參考價】{stop_loss_price} 元（MA20 × 97%，若觸及損失約 {loss_at_stop:,.0f} 元）\n"
+            f"【停損參考價】{stop_loss_price} 元（{stop_loss_reason}，若觸及損失約 {loss_at_stop:,.0f} 元）\n"
             f"【停利第一目標】{tp1_price} 元（近20日高點，潛在獲利約 {gain_at_tp1:,.0f} 元）\n"
             f"【停利第二目標】{tp2_price} 元（高點延伸 8%，潛在獲利約 {gain_at_tp2:,.0f} 元）\n"
             f"【風險報酬比】1 : {rr_ratio}（停損 vs 停利一）\n"
@@ -501,7 +516,7 @@ def _run_risk_analysis(uid, draft, line):
             f"成本：{capital:,.0f} 元｜市值：{current_value:,.0f} 元\n"
             f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n\n"
             f"🛡️ 停損：{stop_loss_price} 元\n"
-            f"   依據：MA20 {ma20:.1f} 元 × 97%\n"
+            f"   依據：{stop_loss_reason}\n"
             f"   若觸及：損失約 {loss_at_stop:,.0f} 元（{loss_pct_at_stop:.1f}%）\n\n"
             f"🎯 停利目標：\n"
             f"   第一目標：{tp1_price} 元（近20日高點）\n"
