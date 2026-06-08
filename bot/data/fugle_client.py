@@ -112,11 +112,32 @@ class FugleClient:
         """
         try:
             url = (
-                f"https://api.fugle.tw/realtime/download/"
-                f"historicalCandles?symbol={stock_id}&timeframe=D&limit={days}&apiToken={self.api_key}"
+                f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/candles/{stock_id}"
             )
-            df = pd.read_csv(url)
-            return df
+            headers = {"X-API-KEY": self.api_key}
+
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+
+            # marketdata v1.0 返回的是 candles 陣列
+            candles = data.get("candles", [])
+            if not candles:
+                return None
+
+            # 轉換為 DataFrame，保留最近 days 筆
+            records = []
+            for candle in candles[-days:]:
+                records.append({
+                    "date": candle.get("date"),
+                    "open": float(candle.get("open", 0)),
+                    "high": float(candle.get("high", 0)),
+                    "low": float(candle.get("low", 0)),
+                    "close": float(candle.get("close", 0)),
+                    "volume": int(candle.get("volume", 0)),
+                })
+
+            return pd.DataFrame(records) if records else None
         except Exception as e:
             print(f"[fugle] fetch_candles {stock_id} 失敗：{e}")
             raise
