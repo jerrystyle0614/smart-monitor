@@ -23,7 +23,7 @@ class StockMonitorService(ScriptedService):
             ),
             Step(
                 field="total_shares",
-                question="持有幾股？（支援零股，例如：100 或 10.5）",
+                question="持有幾股？（例如：100）",
                 validate=self._validate_shares,
                 optional=False,
             ),
@@ -52,14 +52,14 @@ class StockMonitorService(ScriptedService):
 
     def _validate_shares(self, text):
         # type: (str) -> Tuple[bool, Any, str]
-        """驗證股數（支援零股）"""
+        """驗證股數（正整數）"""
         try:
-            shares = float(text)
-            if shares <= 0:
-                return False, None, "請輸入正數，例如：100 或 10.5"
+            shares = int(text)
+            if shares < 1:
+                return False, None, "請輸入正整數，例如：100"
             return True, shares, ""
         except ValueError:
-            return False, None, "請輸入有效的數字，例如：100 或 10.5"
+            return False, None, "請輸入正整數，例如：100"
 
     def _validate_price(self, text):
         # type: (str) -> Tuple[bool, Any, str]
