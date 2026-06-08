@@ -456,9 +456,9 @@ def _run_risk_analysis(uid, draft, line):
             line.push(uid, "❌ 無法進行 AI 風險評估（API Key 未設定）")
             return
 
-        # AI 決定停損價、停利目標、風險報酬比
+        # AI 判斷股票類型 → 選停損方式 → 計算停損/停利
         prompt = (
-            f"你是台股風險管理顧問。根據以下資訊，為這位投資人建議停損價和停利目標。\n\n"
+            f"你是台股風險管理顧問。請依照以下步驟為投資人建議停損和停利。\n\n"
             f"【股票】{stock_name}（{stock_id}）\n"
             f"【持股】{shares:,} 股，均價 {cost_price} 元\n"
             f"【投入成本】{capital:,.0f} 元\n"
@@ -467,10 +467,25 @@ def _run_risk_analysis(uid, draft, line):
             f"【MA20】{ma20:.2f} 元（股價偏離均線 {result.pct_from_ma20:+.2f}%）\n"
             f"【近20日最高收盤】{high20} 元（從高點回撤 {result.pullback_pct:.2f}%）\n"
             f"【系統訊號】\n{alert_lines}\n"
-            f"【近20日 K 線】\n{kline_lines}\n"
-            f"請綜合技術面（支撐/壓力位、MA20、K 線型態）與持倉成本，給出建議。\n\n"
+            f"【近20日 K 線】\n{kline_lines}\n\n"
+            f"步驟一：判斷此股票類型（從以下選一）：\n"
+            f"  - 大型權值股（市值大、法人持股高、波動穩定）\n"
+            f"  - 中小型成長股（題材股、生技、AI 概念、波動大）\n"
+            f"  - 高殖利率ETF（0056、00940、00878 等）\n"
+            f"  - 景氣循環股（鋼鐵、航運、半導體設備）\n"
+            f"  - 小型投機股（成交量小、波動極大）\n\n"
+            f"步驟二：根據股票類型選擇最適合的停損方式：\n"
+            f"  - ATR停損：適合大型權值股，依波動幅度設定\n"
+            f"  - 技術面停損（MA20/前低）：適合一般波段股\n"
+            f"  - 最大回撤停損：適合ETF、景氣循環股\n"
+            f"  - 百分比停損：適合中小型成長股、投機股\n"
+            f"  - 時間停損：適合題材股（可與其他方式並用）\n\n"
+            f"步驟三：依選定方式計算今日建議停損價和停利目標。\n\n"
             f"回覆格式為 JSON，不要有其他文字：\n"
-            f'{{"stop_loss_price": 數字, "stop_loss_reason": "停損理由（1句）",'
+            f'{{"stock_type": "股票類型",'
+            f'"stop_loss_method": "停損方式名稱",'
+            f'"stop_loss_price": 數字,'
+            f'"stop_loss_reason": "因為這是[股票類型]，採用[停損方式]，理由說明（1～2句）",'
             f'"tp1_price": 數字, "tp1_reason": "第一停利理由（1句）",'
             f'"tp2_price": 數字, "tp2_reason": "第二停利理由（1句）",'
             f'"risk_level": "低/中/高",'
@@ -494,6 +509,8 @@ def _run_risk_analysis(uid, draft, line):
         except Exception:
             ai_data = {}
 
+        stock_type = ai_data.get("stock_type", "")
+        stop_loss_method = ai_data.get("stop_loss_method", "")
         stop_loss_price = float(ai_data.get("stop_loss_price", round(close * 0.95, 1)))
         stop_loss_reason = ai_data.get("stop_loss_reason", "AI 建議停損點")
         tp1_price = float(ai_data.get("tp1_price", round(high20, 1)))
@@ -520,6 +537,8 @@ def _run_risk_analysis(uid, draft, line):
             f"持股：{shares:,} 股｜均價：{cost_price} 元\n"
             f"成本：{capital:,.0f} 元｜市值：{current_value:,.0f} 元\n"
             f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n\n"
+            f"📌 股票類型：{stock_type}\n"
+            f"📐 停損方式：{stop_loss_method}\n\n"
             f"🛡️ 停損：{stop_loss_price} 元\n"
             f"   理由：{stop_loss_reason}\n"
             f"   若觸及：損失約 {loss_at_stop:,.0f} 元（{loss_pct_at_stop:.1f}%）\n\n"
