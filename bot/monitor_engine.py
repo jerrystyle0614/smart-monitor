@@ -231,8 +231,10 @@ class MonitorEngine:
                 "title": "⚠️ 停損觸發",
                 "message": (
                     "【{} {}】現價 {} 元 {}\n"
-                    "已跌破停損價 {} 元，建議評估出場。"
-                ).format(stock_id, stock_name, price, pct, stop),
+                    "已跌破停損價 {} 元，建議評估出場。\n\n"
+                    "💡 如需刪除此監控，請輸入『狀態』查看監控清單，\n"
+                    "然後輸入『刪除 {}』移除此股票。"
+                ).format(stock_id, stock_name, price, pct, stop, stock_index + 1),
                 "color": 0xE74C3C,
                 "fired_key": "stop",
                 "stock_index": stock_index,
@@ -248,8 +250,10 @@ class MonitorEngine:
                 "title": "🎯 目標一達成",
                 "message": (
                     "【{} {}】現價 {} 元 {}\n"
-                    "已達目標一 {} 元，可考慮獲利了結。"
-                ).format(stock_id, stock_name, price, pct, target1),
+                    "已達目標一 {} 元，可考慮獲利了結。\n\n"
+                    "💡 如需刪除此監控，請輸入『狀態』查看監控清單，\n"
+                    "然後輸入『刪除 {}』移除此股票。"
+                ).format(stock_id, stock_name, price, pct, target1, stock_index + 1),
                 "color": 0x2ECC71,
                 "fired_key": "target1",
                 "stock_index": stock_index,
