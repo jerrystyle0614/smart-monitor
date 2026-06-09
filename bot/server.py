@@ -164,6 +164,7 @@ async def webhook(request: Request):
 
             text = msg.get("text", "")
             reply_token = event.get("replyToken", "")
+            logger.info("[webhook] uid={} text={!r}".format(user_id, text))
             handle_message(user_id, text, _store, _line, reply_token)
 
     return {"status": "ok"}

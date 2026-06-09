@@ -345,6 +345,8 @@ class ETFPickerService(ScriptedService):
         capital = draft["capital"]
         goal = draft["goal"]
 
+        store.clear_service_state(uid)
+
         # 查詢次數檢查
         count = _get_query_count(uid)
         if count >= MAX_DAILY_QUERIES:
