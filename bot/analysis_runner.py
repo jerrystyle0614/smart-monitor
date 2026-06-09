@@ -54,8 +54,9 @@ def run_analysis_for_user(
 
     cfg = {**_DEFAULT_SWING_CFG, **swing_cfg}
 
+    is_premarket = (mode == AnalysisMode.PREMARKET)
     try:
-        df = fetch_candles(stock_id, days=60)
+        df = fetch_candles(stock_id, days=60, premarket=is_premarket)
     except Exception as e:
         print(f"[analysis] 取得 {stock_id} 日 K 失敗：{e}")
         return None
@@ -149,15 +150,16 @@ def _ai_explain(stock_id, stock_name, result, mode, df):
 
         time_label = "盤前" if mode == AnalysisMode.PREMARKET else "盤後"
         price_label = "昨收" if mode == AnalysisMode.PREMARKET else "今日收盤"
+        date_label  = "昨日" if mode == AnalysisMode.PREMARKET else "今日"
 
-        # 今日（最後一筆）開/高/低/量（成交量由股轉張：÷ 1000）
-        today_row = df.iloc[-1]
-        today_open   = float(today_row.get("open",   0))
-        today_high   = float(today_row.get("high",   0))
-        today_low    = float(today_row.get("low",    0))
-        today_volume = int(today_row.get("volume",   0)) // 1000  # 股 → 張
+        # 盤前：最後一筆是昨收，不存在今日資料；盤後：最後一筆是今日收盤
+        last_row = df.iloc[-1]
+        today_open   = float(last_row.get("open",   0))
+        today_high   = float(last_row.get("high",   0))
+        today_low    = float(last_row.get("low",    0))
+        today_volume = int(last_row.get("volume",   0)) // 1000  # 股 → 張
 
-        # 平均量（近20日，排除今日）
+        # 平均量（近20日，排除最後一筆）
         recent = df.tail(21).iloc[:-1] if len(df) > 1 else df
         avg_volume = int(recent["volume"].mean()) // 1000 if len(recent) > 0 else 0  # 股 → 張
         volume_ratio = (today_volume / avg_volume * 100) if avg_volume > 0 else 0
@@ -178,8 +180,8 @@ def _ai_explain(stock_id, stock_name, result, mode, df):
             f"【股票】{stock_name}（{stock_id}）\n\n"
             f"【技術指標】\n"
             f"{price_label}：{result.close} 元\n"
-            f"今日開盤：{today_open} 元　最高：{today_high} 元　最低：{today_low} 元\n"
-            f"成交量：{today_volume:,} 張（近20日均量 {avg_volume:,} 張，約均量的 {volume_ratio:.0f}%）\n"
+            f"{date_label}開盤：{today_open} 元　最高：{today_high} 元　最低：{today_low} 元\n"
+            f"{date_label}成交量：{today_volume:,} 張（近20日均量 {avg_volume:,} 張，約均量的 {volume_ratio:.0f}%）\n"
             f"MA20：{result.ma20:.2f} 元（偏離 {result.pct_from_ma20:+.2f}%）\n"
             f"近20日最高收盤：{result.high20} 元（從高點下跌 {result.pullback_pct:.2f}%）\n\n"
             f"【近20日 K 線】\n"

@@ -10,13 +10,14 @@ import pandas as pd
 from fugle_marketdata import RestClient
 
 
-def fetch_candles(symbol: str, days: int = 60) -> pd.DataFrame:
+def fetch_candles(symbol: str, days: int = 60, premarket: bool = False) -> pd.DataFrame:
     """
     抓取指定股票最近 N 個交易日的日 K。
 
     Args:
-        symbol: 股票代號，例如 "3312"
-        days:   抓取天數（日曆天，實際交易日會少於此數）
+        symbol:     股票代號，例如 "3312"
+        days:       抓取天數（日曆天，實際交易日會少於此數）
+        premarket:  True 時跳過補今日 K 線，避免帶入盤前不完整的成交量
 
     Returns:
         DataFrame，欄位：date, open, high, low, close, volume
@@ -53,9 +54,9 @@ def fetch_candles(symbol: str, days: int = 60) -> pd.DataFrame:
     df = pd.DataFrame(raw, columns=["date", "open", "high", "low", "close", "volume"])
     df = df.sort_values("date").reset_index(drop=True)
 
-    # 歷史日 K 端點通常落後一個交易日，盤後當日資料尚未入庫。
-    # 用即時報價端點把今日 K 線補到尾端，確保收盤價與 MA/高點為當日值。
-    df = _append_today_candle(symbol, df, api_key)
+    # 盤後才補今日 K 線；盤前跳過，避免帶入不完整的當日成交量
+    if not premarket:
+        df = _append_today_candle(symbol, df, api_key)
     return df
 
 
