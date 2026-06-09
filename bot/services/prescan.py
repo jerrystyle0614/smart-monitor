@@ -34,12 +34,37 @@ _FALLBACK_UNIVERSE = [
 ]
 
 
+def _fetch_candles_yf(stock_id: str, days: int = 60):
+    """用 yfinance 抓台股日 K，格式與 fetch_candles 相容。"""
+    import yfinance as yf
+    import pandas as pd
+
+    ticker = yf.Ticker(f"{stock_id}.TW")
+    period = f"{max(days // 20, 3)}mo"
+    df = ticker.history(period=period)
+    if df is None or df.empty:
+        return None
+
+    df = df.dropna(subset=["Close"])  # 排除尚未收盤的當日 NaN
+    if df.empty:
+        return None
+
+    df = df.reset_index()
+    df["date"] = df["Date"].astype(str).str[:10]
+    df["open"] = df["Open"]
+    df["high"] = df["High"]
+    df["low"] = df["Low"]
+    df["close"] = df["Close"]
+    df["volume"] = (df["Volume"] / 1000).round().astype(int)  # 股 → 張
+    return df[["date", "open", "high", "low", "close", "volume"]].tail(days)
+
+
 def run_prescan() -> int:
     """
     執行盤後預掃，回傳寫入候選股數量。
     失敗只印 warning，不 raise。
+    日 K 資料來源：yfinance（不消耗 Fugle API 配額）
     """
-    from daily_data import fetch_candles
     from bot.stock_picker.finmind_client import FinMindClient
     import pandas as pd
 
@@ -53,19 +78,31 @@ def run_prescan() -> int:
             print("[prescan] 無法取得全市場清單，放棄")
             return 0
 
-        # 排除 ETF（代號 > 4 碼）、KY 股、代號含英文字母
+        # 排除 ETF（代號 > 4 碼 or 代號以 0 開頭）、KY 股、代號含英文字母
         def _is_valid(s):
             sid = s.get("stock_id", "")
             name = s.get("stock_name", "")
             if not sid.isdigit():
                 return False
-            if len(sid) > 4:
+            if len(sid) != 4:
+                return False
+            if sid.startswith("0"):
                 return False
             if "KY" in name:
                 return False
             return True
 
         valid_stocks = [s for s in all_stocks if _is_valid(s)]
+
+        # 去重（FinMind 清單可能有重複條目）
+        seen = set()
+        unique_stocks = []
+        for s in valid_stocks:
+            sid = s["stock_id"]
+            if sid not in seen:
+                seen.add(sid)
+                unique_stocks.append(s)
+        valid_stocks = unique_stocks
 
         # 按代號數字升序取前 N（代號越小通常市值越大）
         valid_stocks.sort(key=lambda s: int(s["stock_id"]))
@@ -78,7 +115,7 @@ def run_prescan() -> int:
             stock_id = s["stock_id"]
             stock_name = s["stock_name"]
             try:
-                df = fetch_candles(stock_id, days=60)
+                df = _fetch_candles_yf(stock_id, days=60)
                 if df is None or len(df) < 20:
                     continue
 

@@ -57,7 +57,7 @@ class TestRunPrescan:
 
         with patch("bot.services.prescan.PRESCAN_DIR", tmp_path), \
              patch("bot.stock_picker.finmind_client.FinMindClient", return_value=mock_fm), \
-             patch("daily_data.fetch_candles", return_value=_make_df(close=100.0, volume=1000)):
+             patch("bot.services.prescan._fetch_candles_yf", return_value=_make_df(close=100.0, volume=1000)):
 
             from bot.services.prescan import run_prescan
             count = run_prescan()
@@ -86,7 +86,7 @@ class TestRunPrescan:
 
         with patch("bot.services.prescan.PRESCAN_DIR", tmp_path), \
              patch("bot.stock_picker.finmind_client.FinMindClient", return_value=mock_fm), \
-             patch("daily_data.fetch_candles", side_effect=candle_side):
+             patch("bot.services.prescan._fetch_candles_yf", side_effect=candle_side):
 
             from bot.services.prescan import run_prescan
             count = run_prescan()
@@ -102,7 +102,7 @@ class TestRunPrescan:
 
         with patch("bot.services.prescan.PRESCAN_DIR", tmp_path), \
              patch("bot.stock_picker.finmind_client.FinMindClient", return_value=mock_fm), \
-             patch("daily_data.fetch_candles", return_value=_make_df(close=100.0, volume=100)):
+             patch("bot.services.prescan._fetch_candles_yf", return_value=_make_df(close=100.0, volume=100)):
 
             from bot.services.prescan import run_prescan
             count = run_prescan()
@@ -118,7 +118,7 @@ class TestRunPrescan:
 
         with patch("bot.services.prescan.PRESCAN_DIR", tmp_path), \
              patch("bot.stock_picker.finmind_client.FinMindClient", return_value=mock_fm), \
-             patch("daily_data.fetch_candles", return_value=_make_df(close=100.0, volume=2000)):
+             patch("bot.services.prescan._fetch_candles_yf", return_value=_make_df(close=100.0, volume=2000)):
 
             from bot.services.prescan import run_prescan
             count = run_prescan()
@@ -126,11 +126,12 @@ class TestRunPrescan:
         assert count == 0
 
     def test_run_prescan_excludes_etf_and_ky(self, tmp_path):
-        """ETF（代號 > 4 碼）與 KY 股應被排除在掃描之前"""
+        """ETF（代號 > 4 碼 or 0 開頭）與 KY 股應被排除在掃描之前"""
         all_stocks = [
             {"stock_id": "00878", "stock_name": "國泰永續高息"},  # ETF，5碼
-            {"stock_id": "2330", "stock_name": "台積電 KY"},      # KY 股
-            {"stock_id": "2454", "stock_name": "聯發科"},         # 正常
+            {"stock_id": "0050", "stock_name": "元大台灣50"},      # ETF，0開頭
+            {"stock_id": "2330", "stock_name": "台積電 KY"},       # KY 股
+            {"stock_id": "2454", "stock_name": "聯發科"},          # 正常
         ]
         mock_fm = MagicMock()
         mock_fm.get_all_stocks_basic.return_value = all_stocks
@@ -138,7 +139,7 @@ class TestRunPrescan:
 
         with patch("bot.services.prescan.PRESCAN_DIR", tmp_path), \
              patch("bot.stock_picker.finmind_client.FinMindClient", return_value=mock_fm), \
-             patch("daily_data.fetch_candles", return_value=_make_df(close=100.0, volume=2000)):
+             patch("bot.services.prescan._fetch_candles_yf", return_value=_make_df(close=100.0, volume=2000)):
 
             from bot.services.prescan import run_prescan
             count = run_prescan()
@@ -159,7 +160,7 @@ class TestRunPrescan:
         assert count == 0
 
     def test_run_prescan_skips_failed_stock(self, tmp_path):
-        """單支股票 fetch_candles 失敗應略過，不中斷整批"""
+        """單支股票 yfinance 失敗應略過，不中斷整批"""
         all_stocks = [
             {"stock_id": "2330", "stock_name": "台積電"},
             {"stock_id": "2454", "stock_name": "聯發科"},
@@ -170,12 +171,12 @@ class TestRunPrescan:
 
         def candle_side(stock_id, days=60):
             if stock_id == "2330":
-                raise Exception("API timeout")
+                raise Exception("yfinance timeout")
             return _make_df(close=100.0, volume=2000)
 
         with patch("bot.services.prescan.PRESCAN_DIR", tmp_path), \
              patch("bot.stock_picker.finmind_client.FinMindClient", return_value=mock_fm), \
-             patch("daily_data.fetch_candles", side_effect=candle_side):
+             patch("bot.services.prescan._fetch_candles_yf", side_effect=candle_side):
 
             from bot.services.prescan import run_prescan
             count = run_prescan()
