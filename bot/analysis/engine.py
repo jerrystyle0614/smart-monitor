@@ -23,7 +23,7 @@ class AnalysisEngine:
 
     def __init__(self, use_cache: bool = True):
         self.client = Anthropic()
-        self.model = "claude-3-5-sonnet-20241022"
+        self.model = "claude-sonnet-4-5"
         self.cache = AnalysisCache() if use_cache else None
 
     def analyze_pre_market(
