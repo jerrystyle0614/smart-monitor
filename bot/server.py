@@ -83,6 +83,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    """捕捉所有未處理例外，記錄 log 並回傳 500，避免 process crash。"""
+    from fastapi.responses import JSONResponse
+    logger.error("[server] Unhandled exception on {}: {}".format(request.url.path, exc), exc_info=True)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
 def _verify_signature(body: bytes, signature: str) -> bool:
     """驗證 LINE webhook 簽章，防止偽造請求"""
     secret = os.environ.get("LINE_CHANNEL_SECRET", "")
