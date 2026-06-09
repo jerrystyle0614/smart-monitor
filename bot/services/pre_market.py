@@ -81,6 +81,7 @@ class PreMarketService(ScriptedService):
                     market_context_text=market_context_text,
                 )
 
+                print(f"[pre_market] AnalysisEngine 結果：{bool(analysis_result)}")
                 if analysis_result:
                     # 格式化訊息並推播
                     message = self._format_analysis_message(
@@ -89,14 +90,16 @@ class PreMarketService(ScriptedService):
                     )
                     push_to_line(uid, message, line)
                 else:
-                    # 分析失敗，回退到舊流程
+                    print("[pre_market] AnalysisEngine 回傳空結果，走 fallback")
                     self._fallback_analysis(uid, stock_id, stock_name, line)
             else:
-                # K 線資料不可用，回退
+                print("[pre_market] K 線資料為空，走 fallback")
                 self._fallback_analysis(uid, stock_id, stock_name, line)
 
         except Exception as e:
-            print(f"[pre_market] 分析失敗：{e}")
+            import traceback
+            print(f"[pre_market] 分析失敗（走 fallback）：{e}")
+            print(traceback.format_exc())
             self._fallback_analysis(uid, stock_id, stock_name, line)
 
         # 分析完後設定風險評估狀態，等待使用者主動輸入持股數
