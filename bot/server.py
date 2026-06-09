@@ -103,9 +103,10 @@ async def _global_exception_handler(request: Request, exc: Exception):
         "```\n{}\n```"
     ).format(request.url.path, exc, tb_display)
 
-    error_webhook = os.environ.get("DISCORD_ERROR_WEBHOOK_URL") or os.environ.get("DISCORD_WEBHOOK_URL")
-    notifier = DiscordNotifier(webhook_url=error_webhook)
-    await asyncio.to_thread(notifier.send, "🚨 Server Error 500", msg, 0xE74C3C)
+    error_webhook = os.environ.get("DISCORD_ERROR_WEBHOOK_URL")
+    if error_webhook:
+        notifier = DiscordNotifier(webhook_url=error_webhook)
+        await asyncio.to_thread(notifier.send, "🚨 Server Error 500", msg, 0xE74C3C)
 
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
