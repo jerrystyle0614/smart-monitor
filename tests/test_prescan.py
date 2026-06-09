@@ -159,6 +159,33 @@ class TestRunPrescan:
 
         assert count == 0
 
+    def test_run_prescan_sorts_by_volume_descending(self, tmp_path):
+        """候選股應依近 20 日均量降序排列，高成交量股排前面"""
+        all_stocks = [
+            {"stock_id": "3034", "stock_name": "聯詠"},   # 代號大但量大
+            {"stock_id": "1101", "stock_name": "台泥"},   # 代號小但量小
+            {"stock_id": "2330", "stock_name": "台積電"}, # 中間
+        ]
+        mock_fm = MagicMock()
+        mock_fm.get_all_stocks_basic.return_value = all_stocks
+        mock_fm.get_three_major_buyers.return_value = _make_institutional()
+
+        def candle_side(stock_id, days=60):
+            vol = {"3034": 5000, "1101": 600, "2330": 3000}[stock_id]
+            return _make_df(close=100.0, volume=vol)
+
+        with patch("bot.services.prescan.PRESCAN_DIR", tmp_path), \
+             patch("bot.stock_picker.finmind_client.FinMindClient", return_value=mock_fm), \
+             patch("bot.services.prescan._fetch_candles_yf", side_effect=candle_side):
+
+            from bot.services.prescan import run_prescan
+            run_prescan()
+
+        today = date.today().isoformat()
+        data = json.loads((tmp_path / f"{today}.json").read_text())
+        stock_ids = [s["stock_id"] for s in data["stocks"]]
+        assert stock_ids == ["3034", "2330", "1101"]
+
     def test_run_prescan_skips_failed_stock(self, tmp_path):
         """單支股票 yfinance 失敗應略過，不中斷整批"""
         all_stocks = [

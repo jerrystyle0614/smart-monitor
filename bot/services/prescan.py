@@ -104,14 +104,10 @@ def run_prescan() -> int:
                 unique_stocks.append(s)
         valid_stocks = unique_stocks
 
-        # 按代號數字升序取前 N（代號越小通常市值越大）
-        valid_stocks.sort(key=lambda s: int(s["stock_id"]))
-        candidates_pool = valid_stocks[:PRESCAN_TOP_N]
+        print(f"[prescan] 開始掃描 {len(valid_stocks)} 支股票...")
 
-        print(f"[prescan] 開始掃描 {len(candidates_pool)} 支股票...")
-
-        passed = []
-        for s in candidates_pool:
+        scored = []
+        for s in valid_stocks:
             stock_id = s["stock_id"]
             stock_name = s["stock_name"]
             try:
@@ -139,11 +135,15 @@ def run_prescan() -> int:
                 if trust_net < 0:
                     continue
 
-                passed.append({"stock_id": stock_id, "stock_name": stock_name})
+                scored.append({"stock_id": stock_id, "stock_name": stock_name, "_vol": avg_vol_20})
 
             except Exception as e:
                 print(f"[prescan] {stock_id} 略過：{e}")
                 continue
+
+        # 依近 20 日均量降序排列，取前 N 支
+        scored.sort(key=lambda x: x["_vol"], reverse=True)
+        passed = [{"stock_id": s["stock_id"], "stock_name": s["stock_name"]} for s in scored[:PRESCAN_TOP_N]]
 
         # 寫入快取
         today_str = date.today().isoformat()
