@@ -263,25 +263,37 @@ class MonitorEngine:
         return "\n".join(parts)
 
     def _loop(self):
-        """主迴圈：交易時段每 30 秒掃描一次；非交易時段休眠到下次開盤"""
+        """主迴圈：分析推播優先檢查，交易時段內才執行股價掃描"""
         while self._running:
-            if not is_trading_hours():
-                secs = seconds_until_next_open()
-                print(f"[monitor] 非交易時段，休眠 {int(secs // 60)} 分鐘至下次開盤")
-                self._sleep(secs)
-                continue
-
-            # 檢查是否到達分析推播時間（08:30 或 13:35 ±2 分鐘）
+            # 分析推播不受交易時段限制（08:30 盤前、13:35 盤後都需觸發）
             should_run, mode, fire_key = self._should_run_analysis()
             if should_run:
                 self._analysis_fired.add(fire_key)
                 self._run_analysis_all(mode)
 
-            try:
-                self._scan_all()
-            except Exception as e:
-                print(f"[monitor] 掃描異常：{e}")
-            self._sleep(POLL_INTERVAL_SEC)
+            if is_trading_hours():
+                # 交易時段：執行股價監控掃描
+                try:
+                    self._scan_all()
+                except Exception as e:
+                    print(f"[monitor] 掃描異常：{e}")
+                self._sleep(POLL_INTERVAL_SEC)
+            else:
+                # 非交易時段：若接近分析時間（08:28~08:32、13:33~13:37）繼續每 30 秒輪詢
+                # 否則休眠到下次開盤前 10 分鐘
+                now = datetime.datetime.now(_TZ_OFFSET)
+                near_analysis = any(
+                    abs((now.hour * 60 + now.minute) - (t.hour * 60 + t.minute)) <= 5
+                    for t in _ANALYSIS_TIMES
+                )
+                if near_analysis:
+                    self._sleep(POLL_INTERVAL_SEC)
+                else:
+                    secs = seconds_until_next_open()
+                    # 提前 10 分鐘醒來，確保 08:30 盤前分析能觸發
+                    wake_secs = max(secs - 600, 60)
+                    print(f"[monitor] 非交易時段，休眠 {int(wake_secs // 60)} 分鐘")
+                    self._sleep(wake_secs)
 
     def _sleep(self, total_secs: float):
         """可中斷的休眠：每 0.5 秒檢查一次 self._running"""
