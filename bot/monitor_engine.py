@@ -137,67 +137,72 @@ class MonitorEngine:
         fugle = FugleClient()
 
         for uid in users:
-            try:
-                user_cfg = self._store.get_config(uid)
-                stock_id = user_cfg.get("stock_id")
-                stock_name = user_cfg.get("stock_name", "")
-                if not stock_id:
-                    continue
+            watchlist = self._store.get_watchlist(uid)
+            if not watchlist:
+                continue
+            for stock in watchlist:
+                try:
+                    stock_id = stock.get("stock_id")
+                    stock_name = stock.get("stock_name", "")
+                    if not stock_id:
+                        continue
 
-                df = fugle.fetch_candles(stock_id, days=20, premarket=is_premarket)
-                if df is None or len(df) == 0:
-                    print(f"[monitor] {stock_id} K 線資料取得失敗，跳過")
-                    continue
+                    df = fugle.fetch_candles(stock_id, days=20, premarket=is_premarket)
+                    if df is None or len(df) == 0:
+                        print(f"[monitor] {stock_id} K 線資料取得失敗，跳過")
+                        continue
 
-                current_price = float(df.iloc[-1].get("close", 0))
+                    current_price = float(df.iloc[-1].get("close", 0))
 
-                # 格式化 K 線文字
-                lines = ["日期\t\t開盤\t\t高\t\t低\t\t收盤\t\t成交量"]
-                for _, row in df.iterrows():
-                    lines.append(
-                        "{}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:,}".format(
-                            str(row.get("date", ""))[:10],
-                            row.get("open", 0), row.get("high", 0),
-                            row.get("low", 0), row.get("close", 0),
-                            int(row.get("volume", 0)),
+                    # 格式化 K 線文字
+                    lines = ["日期\t\t開盤\t\t高\t\t低\t\t收盤\t\t成交量"]
+                    for _, row in df.iterrows():
+                        lines.append(
+                            "{}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:,}".format(
+                                str(row.get("date", ""))[:10],
+                                row.get("open", 0), row.get("high", 0),
+                                row.get("low", 0), row.get("close", 0),
+                                int(row.get("volume", 0)),
+                            )
                         )
+                    candle_data = "\n".join(lines)
+
+                    if is_premarket:
+                        result = engine.analyze_pre_market(
+                            stock_id=stock_id,
+                            stock_name=stock_name,
+                            candle_data=candle_data,
+                            current_price=current_price,
+                            market_context_text=market_context_text,
+                        )
+                    else:
+                        result = engine.analyze_post_market(
+                            stock_id=stock_id,
+                            stock_name=stock_name,
+                            candle_data=candle_data,
+                            current_price=current_price,
+                        )
+
+                    if not result:
+                        print(f"[monitor] {stock_id} 分析結果為空，跳過")
+                        continue
+
+                    message = self._format_scheduled_message(
+                        stock_id, stock_name, current_price, result,
+                        mode_label=mode_label,
+                        market_context_text=market_context_text if is_premarket else "",
                     )
-                candle_data = "\n".join(lines)
-
-                if is_premarket:
-                    result = engine.analyze_pre_market(
-                        stock_id=stock_id,
-                        stock_name=stock_name,
-                        candle_data=candle_data,
-                        current_price=current_price,
-                        market_context_text=market_context_text,
-                    )
-                else:
-                    result = engine.analyze_post_market(
-                        stock_id=stock_id,
-                        stock_name=stock_name,
-                        candle_data=candle_data,
-                        current_price=current_price,
+                    self._line.push(uid, message)
+                    self._discord.send(
+                        f"{mode_label}分析 - {stock_name}({stock_id})",
+                        message,
+                        0x3498DB if is_premarket else 0x9B59B6,
                     )
 
-                if not result:
-                    print(f"[monitor] {stock_id} 分析結果為空，跳過")
-                    continue
-
-                message = self._format_scheduled_message(
-                    stock_id, stock_name, current_price, result,
-                    mode_label=mode_label,
-                    market_context_text=market_context_text if is_premarket else "",
-                )
-                self._line.push(uid, message)
-                self._discord.send(
-                    f"{mode_label}分析 - {stock_name}({stock_id})",
-                    message,
-                    0x3498DB if is_premarket else 0x9B59B6,
-                )
-
-            except Exception as e:
-                print(f"[monitor] 分析推播失敗 uid={uid}：{e}")
+                except Exception as e:
+                    import traceback
+                    print(f"[monitor] {stock_id} 分析推播失敗 uid={uid}：{e}")
+                    print(traceback.format_exc())
 
     def _format_scheduled_message(
         self, stock_id, stock_name, current_price, analysis,

@@ -49,7 +49,7 @@ class TestAnalysisEngine:
     def test_engine_initialization(self, engine):
         """引擎初始化"""
         assert engine.client is not None
-        assert engine.model == "claude-3-5-sonnet-20241022"
+        assert engine.model == "claude-sonnet-4-5"
 
     @patch("bot.analysis.engine.Anthropic")
     def test_analyze_pre_market_with_mock(self, mock_anthropic, engine):
