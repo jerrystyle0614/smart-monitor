@@ -243,9 +243,10 @@ def _show_menu(uid, store, line, reply_token):
     if plan == "pro":
         menu += "4️⃣ 選股推薦\n"
 
-    menu += "\n輸入數字選擇\n"
+    menu += "\n輸入數字選擇服務\n"
     menu += "『狀態』— 查看監控清單\n"
     menu += "『說明』或『說明 1~4』— 查看使用說明\n"
+    menu += "『取消』— 任何步驟中途回到此選單\n"
     menu += "━━━━━━━━━━━━━━━━━━"
 
     line.reply(reply_token, menu)
@@ -357,7 +358,13 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
     draft = store.get_draft(uid)
     step = draft.get("_step", "ask_shares")
 
-    if text in ("跳過", "取消"):
+    if text == "取消":
+        store.clear_service_state(uid)
+        line.reply(reply_token, "已取消，返回主選單。")
+        _show_menu(uid, store, line, reply_token)
+        return
+
+    if text == "跳過":
         store.clear_service_state(uid)
         line.reply(reply_token, "已略過風險評估。")
         return
@@ -371,14 +378,14 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
         except ValueError:
             line.reply(reply_token,
                 "❌ 請輸入正整數，例如：1000\n\n"
-                "請輸入您目前 / 預計持有幾股？\n（輸入『跳過』略過）"
+                "請輸入您目前 / 預計持有幾股？\n（輸入『跳過』略過）\n（輸入『取消』回主選單）"
             )
             return
 
         draft["shares"] = shares
         draft["_step"] = "ask_cost"
         store.set_service_state(uid, "risk_assessment", None, draft, None)
-        line.reply(reply_token, "請輸入你的買入均價是多少元？\n例如：65\n\n（輸入『跳過』略過）")
+        line.reply(reply_token, "請輸入你的買入均價是多少元？\n例如：65\n\n（輸入『跳過』略過）\n（輸入『取消』回主選單）")
         return
 
     # --- 第二步：等待均價輸入 → 執行分析 ---
@@ -390,7 +397,7 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
         except ValueError:
             line.reply(reply_token,
                 "❌ 請輸入有效數字，例如：65\n\n"
-                "請輸入你的買入均價是多少元？\n（輸入『跳過』略過）"
+                "請輸入你的買入均價是多少元？\n（輸入『跳過』略過）\n（輸入『取消』回主選單）"
             )
             return
 

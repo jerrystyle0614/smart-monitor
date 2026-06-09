@@ -92,4 +92,5 @@ class ScriptedService:
         prompt = step.question
         if step.optional:
             prompt += "\n（輸入『跳過』略過）"
+        prompt += "\n（輸入『取消』回主選單）"
         line.reply(reply_token, prompt)
