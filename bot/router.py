@@ -9,6 +9,7 @@ from bot.services.stock_monitor import StockMonitorService
 from bot.services.pre_market import PreMarketService
 from bot.services.post_market import PostMarketService
 from bot.services.stock_picker import StockPickerService
+from bot.services.etf_picker import ETFPickerService
 
 
 SERVICE_PERMISSIONS = {
@@ -16,18 +17,21 @@ SERVICE_PERMISSIONS = {
     "pre_market":    ["basic", "pro"],
     "post_market":   ["basic", "pro"],
     "stock_picker":  ["pro"],
+    "etf_picker":    ["pro"],
 }
 
 _ADD_STOCK = StockMonitorService()
 _PRE_MARKET = PreMarketService()
 _POST_MARKET = PostMarketService()
 _STOCK_PICKER = StockPickerService()
+_ETF_PICKER = ETFPickerService()
 
 _SERVICE_MAP = {
     "stock_monitor": _ADD_STOCK,
     "pre_market": _PRE_MARKET,
     "post_market": _POST_MARKET,
     "stock_picker": _STOCK_PICKER,
+    "etf_picker": _ETF_PICKER,
 }
 
 
@@ -67,10 +71,11 @@ def handle_follow(uid, store, line):
         "1️⃣ 股票監控\n"
         "2️⃣ 盤前分析\n"
         "3️⃣ 盤後分析\n"
-        "4️⃣ 選股推薦\n\n"
+        "4️⃣ 選股推薦\n"
+        "5️⃣ ETF 推薦\n\n"
         "輸入數字選擇\n"
         "『狀態』— 查看監控清單\n"
-        "『說明』或『說明 1~4』— 查看使用說明\n"
+        "『說明』或『說明 1~5』— 查看使用說明\n"
         "================="
     )
 
@@ -115,7 +120,7 @@ def handle_message(uid, text, store, line, reply_token):
         return
 
     # 主菜單路由
-    if text in ("1", "2", "3", "4"):
+    if text in ("1", "2", "3", "4", "5"):
         _handle_menu(uid, text, store, line, reply_token)
     elif text in ("狀態", "status"):
         _show_watchlist(uid, store, line, reply_token)
@@ -151,6 +156,7 @@ def _handle_menu(uid, choice, store, line, reply_token):
         "2": ("pre_market", _PRE_MARKET),
         "3": ("post_market", _POST_MARKET),
         "4": ("stock_picker", _STOCK_PICKER),
+        "5": ("etf_picker", _ETF_PICKER),
     }
 
     service_name, service = service_map.get(choice, (None, None))
@@ -161,9 +167,10 @@ def _handle_menu(uid, choice, store, line, reply_token):
     # 檢查權限
     allowed_plans = SERVICE_PERMISSIONS.get(service_name, [])
     if plan not in allowed_plans:
-        if service_name == "stock_picker":
+        if service_name in ("stock_picker", "etf_picker"):
+            label = "選股推薦" if service_name == "stock_picker" else "ETF 推薦"
             line.reply(reply_token,
-                "⚠️ 選股推薦為 pro 方案專屬功能。\n"
+                f"⚠️ {label}為 pro 方案專屬功能。\n"
                 "請聯絡管理員了解升級方式。"
             )
         else:
@@ -242,10 +249,11 @@ def _show_menu(uid, store, line, reply_token):
 
     if plan == "pro":
         menu += "4️⃣ 選股推薦\n"
+        menu += "5️⃣ ETF 推薦\n"
 
     menu += "\n輸入數字選擇服務\n"
     menu += "『狀態』— 查看監控清單\n"
-    menu += "『說明』或『說明 1~4』— 查看使用說明\n"
+    menu += "『說明』或『說明 1~5』— 查看使用說明\n"
     menu += "『取消』— 任何步驟中途回到此選單\n"
     menu += "━━━━━━━━━━━━━━━━━━"
 
@@ -294,7 +302,8 @@ def _handle_help(uid, text, line, reply_token):
         "1️⃣ 股票監控 — 輸入『說明 1』了解詳情\n"
         "2️⃣ 盤前分析 — 輸入『說明 2』了解詳情\n"
         "3️⃣ 盤後分析 — 輸入『說明 3』了解詳情\n"
-        "4️⃣ 選股推薦 — 輸入『說明 4』了解詳情\n\n"
+        "4️⃣ 選股推薦 — 輸入『說明 4』了解詳情\n"
+        "5️⃣ ETF 推薦 — 輸入『說明 5』了解詳情\n\n"
         "🛠️ 常用指令：\n"
         "『狀態』— 查看監控清單\n"
         "『刪除 [數字]』— 移除監控股票"
@@ -336,8 +345,20 @@ def _handle_help(uid, text, line, reply_token):
             "功能：每日掃描全市場，推薦籌碼面 + 技術面優質股票。\n\n"
             "使用步驟：\n"
             "1. 輸入『4』選擇選股推薦\n"
-            "2. 系統自動掃描並推播推薦股票\n\n"
+            "2. 輸入可用資金\n"
+            "3. 選擇持有期間\n"
+            "4. 選擇風險偏好\n\n"
             "篩選條件：主力進場、技術面突破、潛在獲利空間\n"
+            "⚠️ 此功能為 pro 方案專屬"
+        ),
+        "5": (
+            "📖 ETF 推薦詳細說明\n\n"
+            "功能：依投資目標篩選適合的 ETF，AI 推薦 3 檔並說明操作策略。\n\n"
+            "使用步驟：\n"
+            "1. 輸入『5』選擇 ETF 推薦\n"
+            "2. 輸入可用資金\n"
+            "3. 選擇投資目標（大盤 / 高股息 / 主題）\n\n"
+            "篩選條件：乖離率 < 8%、近30日不跌逾10%、高股息需殖利率 > 3%\n"
             "⚠️ 此功能為 pro 方案專屬"
         ),
     }
