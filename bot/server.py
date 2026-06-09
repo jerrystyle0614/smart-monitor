@@ -85,9 +85,27 @@ app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
-    """捕捉所有未處理例外，記錄 log 並回傳 500，避免 process crash。"""
+    """捕捉所有未處理例外，記錄 log、推播 Discord，並回傳 500，避免 process crash。"""
+    import asyncio
+    import traceback
     from fastapi.responses import JSONResponse
+
+    tb = traceback.format_exc()
     logger.error("[server] Unhandled exception on {}: {}".format(request.url.path, exc), exc_info=True)
+
+    # 截斷 traceback 避免超過 Discord embed 4096 字元上限
+    max_len = 3800
+    tb_display = tb if len(tb) <= max_len else tb[:max_len] + "\n…（已截斷）"
+
+    msg = (
+        "**路徑：** `{}`\n"
+        "**錯誤：** `{}`\n\n"
+        "```\n{}\n```"
+    ).format(request.url.path, exc, tb_display)
+
+    notifier = DiscordNotifier()
+    await asyncio.to_thread(notifier.send, "🚨 Server Error 500", msg, 0xE74C3C)
+
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
