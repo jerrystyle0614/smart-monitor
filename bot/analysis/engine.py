@@ -12,6 +12,7 @@ from anthropic import Anthropic
 from bot.analysis.cache import AnalysisCache
 from bot.analysis.prompts import (
     TECHNICAL_ANALYSIS_PROMPT,
+    TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT,
     ENTRY_EXIT_PROMPT,
     RISK_ALERT_PROMPT,
 )
@@ -31,9 +32,11 @@ class AnalysisEngine:
         stock_name: str,
         candle_data: str,
         current_price: float,
+        market_context_text: str = "",
     ) -> Dict[str, Any]:
         """
         盤前分析：技術面 + 進出場建議 + 風險提示
+        market_context_text: 格式化後的市場背景文字（可選）
         回傳 {
             "technical": {...},
             "entry_exit": {...},
@@ -47,9 +50,9 @@ class AnalysisEngine:
             if cached:
                 return cached
 
-        # 技術面分析
+        # 技術面分析（盤前版本含市場背景）
         technical = self._analyze_technical(
-            stock_id, stock_name, candle_data
+            stock_id, stock_name, candle_data, market_context_text=market_context_text
         )
         if not technical:
             return {}
@@ -128,14 +131,26 @@ class AnalysisEngine:
         return result
 
     def _analyze_technical(
-        self, stock_id: str, stock_name: str, candle_data: str
+        self,
+        stock_id: str,
+        stock_name: str,
+        candle_data: str,
+        market_context_text: str = "",
     ) -> Optional[Dict[str, Any]]:
-        """技術面分析"""
-        prompt = TECHNICAL_ANALYSIS_PROMPT.format(
-            stock_id=stock_id,
-            stock_name=stock_name,
-            candle_data=candle_data,
-        )
+        """技術面分析（有 market_context_text 時使用盤前含市場背景 prompt）"""
+        if market_context_text:
+            prompt = TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT.format(
+                stock_id=stock_id,
+                stock_name=stock_name,
+                candle_data=candle_data,
+                market_context=market_context_text,
+            )
+        else:
+            prompt = TECHNICAL_ANALYSIS_PROMPT.format(
+                stock_id=stock_id,
+                stock_name=stock_name,
+                candle_data=candle_data,
+            )
 
         try:
             response = self.client.messages.create(

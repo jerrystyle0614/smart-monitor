@@ -108,35 +108,154 @@ class MonitorEngine:
         return False, None, ""
 
     def _run_analysis_all(self, mode) -> None:
-        """對所有 MONITORING 使用者執行波段分析並推播"""
-        from bot.analysis_runner import run_analysis_for_user
+        """對所有 MONITORING 使用者執行分析並推播（走新 AnalysisEngine）"""
+        from bot.analysis_runner import AnalysisMode
+        from bot.analysis.engine import AnalysisEngine
+        from bot.data.fugle_client import FugleClient
+        from bot.data.market_context import fetch_market_context, format_market_context
+
         users = self._store.get_all_monitoring_users()
         if not users:
             return
 
-        swing_cfg = {}
-        try:
-            with open("config.json", encoding="utf-8") as f:
-                swing_cfg = json.load(f)
-        except Exception:
-            pass
-
-        mode_label = "盤前" if "PREMARKET" in str(mode) else "盤後"
+        is_premarket = (mode == AnalysisMode.PREMARKET)
+        mode_label = "盤前" if is_premarket else "盤後"
         print(f"[monitor] 執行{mode_label}分析，共 {len(users)} 位使用者")
+
+        # 盤前才抓市場背景（所有使用者共用同一份）
+        market_context_text = ""
+        if is_premarket:
+            try:
+                ctx = fetch_market_context()
+                market_context_text = format_market_context(ctx) if ctx else ""
+                if market_context_text:
+                    print("[monitor] 盤前市場背景已取得")
+            except Exception as e:
+                print(f"[monitor] 市場背景取得失敗：{e}")
+
+        engine = AnalysisEngine(use_cache=True)
+        fugle = FugleClient()
 
         for uid in users:
             try:
                 user_cfg = self._store.get_config(uid)
-                result = run_analysis_for_user(user_cfg, swing_cfg, mode)
-                if result is None:
+                stock_id = user_cfg.get("stock_id")
+                stock_name = user_cfg.get("stock_name", "")
+                if not stock_id:
                     continue
-                self._line.push(uid, f"{result['title']}\n\n{result['message']}")
-                self._discord.send(result["title"], result["message"], result["color"])
-                for alert in result["alerts"]:
-                    self._line.push(uid, f"{alert.title}\n\n{alert.message}")
-                    self._discord.send(alert.title, alert.message, alert.color)
+
+                df = fugle.fetch_candles(stock_id, days=20)
+                if df is None or len(df) == 0:
+                    print(f"[monitor] {stock_id} K 線資料取得失敗，跳過")
+                    continue
+
+                current_price = float(df.iloc[-1].get("close", 0))
+
+                # 格式化 K 線文字
+                lines = ["日期\t\t開盤\t\t高\t\t低\t\t收盤\t\t成交量"]
+                for _, row in df.iterrows():
+                    lines.append(
+                        "{}\t{:.2f}\t{:.2f}\t{:.2f}\t{:.2f}\t{:,}".format(
+                            str(row.get("date", ""))[:10],
+                            row.get("open", 0), row.get("high", 0),
+                            row.get("low", 0), row.get("close", 0),
+                            int(row.get("volume", 0)),
+                        )
+                    )
+                candle_data = "\n".join(lines)
+
+                if is_premarket:
+                    result = engine.analyze_pre_market(
+                        stock_id=stock_id,
+                        stock_name=stock_name,
+                        candle_data=candle_data,
+                        current_price=current_price,
+                        market_context_text=market_context_text,
+                    )
+                else:
+                    result = engine.analyze_post_market(
+                        stock_id=stock_id,
+                        stock_name=stock_name,
+                        candle_data=candle_data,
+                        current_price=current_price,
+                    )
+
+                if not result:
+                    print(f"[monitor] {stock_id} 分析結果為空，跳過")
+                    continue
+
+                message = self._format_scheduled_message(
+                    stock_id, stock_name, current_price, result,
+                    mode_label=mode_label,
+                    market_context_text=market_context_text if is_premarket else "",
+                )
+                self._line.push(uid, message)
+                self._discord.send(
+                    f"{mode_label}分析 - {stock_name}({stock_id})",
+                    message,
+                    0x3498DB if is_premarket else 0x9B59B6,
+                )
+
             except Exception as e:
                 print(f"[monitor] 分析推播失敗 uid={uid}：{e}")
+
+    def _format_scheduled_message(
+        self, stock_id, stock_name, current_price, analysis,
+        mode_label="盤前", market_context_text=""
+    ):
+        """格式化排程推播的分析訊息（盤前/盤後自動推播用）"""
+        label = "目前價格" if mode_label == "盤前" else "今日收盤價"
+        parts = [f"📊 {mode_label}分析 - {stock_name} ({stock_id})"]
+        parts.append(f"{label}：{current_price:.2f} 元")
+        parts.append("")
+
+        if market_context_text:
+            parts.append(market_context_text)
+            parts.append("")
+
+        technical = analysis.get("technical", {})
+        if isinstance(technical, dict) and technical:
+            parts.append("🔍 技術面")
+            parts.append(f"- 趨勢：{technical.get('trend', '未知')}")
+            s = technical.get("support")
+            if s:
+                parts.append(f"- 支撐：{s}")
+            r = technical.get("resistance")
+            if r:
+                parts.append(f"- 壓力：{r}")
+            mi = technical.get("market_impact")
+            if mi:
+                parts.append(f"- 市場連動：{mi}")
+            ob = technical.get("open_bias")
+            if ob:
+                parts.append(f"- 開盤預判：{ob}")
+            sm = technical.get("summary")
+            if sm:
+                parts.append(f"- 總結：{sm}")
+            parts.append("")
+
+        entry_exit = analysis.get("entry_exit", {})
+        if isinstance(entry_exit, dict) and entry_exit:
+            section = "💡 進出場建議" if mode_label == "盤前" else "🌅 明日展望"
+            parts.append(section)
+            ep = entry_exit.get("entry_price")
+            if ep:
+                parts.append(f"- {'建議進場' if mode_label == '盤前' else '建議監控'}價：{ep}")
+            sl = entry_exit.get("stop_loss")
+            if sl:
+                parts.append(f"- 停損：{sl}")
+            targets = entry_exit.get("exit_targets")
+            if isinstance(targets, dict):
+                parts.append(
+                    f"- 目標：短期 {targets.get('short_term')} / 中期 {targets.get('medium_term')}"
+                )
+            rl = entry_exit.get("risk_level")
+            if rl:
+                parts.append(f"- 風險等級：{rl}")
+            parts.append("")
+
+        parts.append("⚠️ 本分析僅供參考，投資決策應自負其責")
+        return "\n".join(parts)
 
     def _loop(self):
         """主迴圈：交易時段每 30 秒掃描一次；非交易時段休眠到下次開盤"""
