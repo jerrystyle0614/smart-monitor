@@ -7,6 +7,7 @@ from typing import Tuple, Any, Optional
 
 from bot.services.base import Step, ScriptedService
 from bot.data.fugle_client import FugleClient
+from bot.data.institutional_client import get_institutional_data, format_institutional
 from bot.analysis.engine import AnalysisEngine
 from bot.analysis_runner import run_analysis_for_user, AnalysisMode
 
@@ -56,6 +57,10 @@ class PostMarketService(ScriptedService):
             if self.analysis_engine.cache:
                 self.analysis_engine.cache.delete(stock_id, "pre_market")
 
+            # 抓取三大法人資料
+            inst_data = get_institutional_data(stock_id, days=5)
+            institutional_text = format_institutional(inst_data)
+
             # 獲取最近 20 日 K 線資料（包括今日收盤價）
             candle_data = self._fetch_candle_data(stock_id)
 
@@ -66,12 +71,13 @@ class PostMarketService(ScriptedService):
                 if df is not None and len(df) > 0:
                     current_price = float(df.iloc[-1].get("close", 0))
 
-                # 呼叫 AnalysisEngine 進行分析
+                # 呼叫 AnalysisEngine 進行分析（含籌碼面）
                 analysis_result = self.analysis_engine.analyze_post_market(
                     stock_id=stock_id,
                     stock_name=stock_name,
                     candle_data=candle_data,
                     current_price=current_price,
+                    institutional_text=institutional_text,
                 )
 
                 if analysis_result:
@@ -159,6 +165,12 @@ class PostMarketService(ScriptedService):
                 pattern = technical.get("pattern")
                 if pattern:
                     msg_parts.append(f"- 形態觀察：{pattern}")
+                inst_signal = technical.get("institutional_signal")
+                if inst_signal:
+                    msg_parts.append(f"- 籌碼訊號：{inst_signal}")
+                consec = technical.get("consecutive_buy_days")
+                if consec is not None and consec > 0:
+                    msg_parts.append(f"- 連續買超：{consec} 日")
                 summary = technical.get("summary")
                 if summary:
                     msg_parts.append(f"- 總結：{summary}")

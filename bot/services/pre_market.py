@@ -8,6 +8,7 @@ from typing import Tuple, Any, Optional
 from bot.services.base import Step, ScriptedService
 from bot.data.fugle_client import FugleClient
 from bot.data.market_context import fetch_market_context, format_market_context
+from bot.data.institutional_client import get_institutional_data, format_institutional
 from bot.analysis.engine import AnalysisEngine
 from bot.analysis_runner import run_analysis_for_user, AnalysisMode
 
@@ -61,6 +62,14 @@ class PreMarketService(ScriptedService):
             else:
                 print("[pre_market] 市場背景取得失敗，以純技術面分析")
 
+            # 抓取三大法人資料
+            inst_data = get_institutional_data(stock_id, days=5)
+            institutional_text = format_institutional(inst_data)
+            if inst_data:
+                print(f"[pre_market] 籌碼面資料已取得：連續買超 {inst_data.get('consecutive_days', 0)} 日")
+            else:
+                print("[pre_market] 籌碼面資料取得失敗，以純技術面分析")
+
             # 獲取最近 20 日 K 線資料
             candle_data = self._fetch_candle_data(stock_id, premarket=True)
 
@@ -72,13 +81,14 @@ class PreMarketService(ScriptedService):
                     # 盤前時使用昨日收盤價
                     current_price = float(df.iloc[-1].get("close", 0))
 
-                # 呼叫 AnalysisEngine 進行分析（含市場背景）
+                # 呼叫 AnalysisEngine 進行分析（含市場背景 + 籌碼面）
                 analysis_result = self.analysis_engine.analyze_pre_market(
                     stock_id=stock_id,
                     stock_name=stock_name,
                     candle_data=candle_data,
                     current_price=current_price,
                     market_context_text=market_context_text,
+                    institutional_text=institutional_text,
                 )
 
                 print(f"[pre_market] AnalysisEngine 結果：{bool(analysis_result)}")
@@ -87,6 +97,7 @@ class PreMarketService(ScriptedService):
                     message = self._format_analysis_message(
                         stock_id, stock_name, current_price, analysis_result,
                         market_context_text=market_context_text,
+                        institutional_text=institutional_text,
                     )
                     push_to_line(uid, message, line)
                 else:
@@ -151,6 +162,7 @@ class PreMarketService(ScriptedService):
         current_price: float,
         analysis: dict,
         market_context_text: str = "",
+        institutional_text: str = "",
     ) -> str:
         """
         將分析結果格式化為易讀的 LINE 訊息。
@@ -180,6 +192,12 @@ class PreMarketService(ScriptedService):
                 pattern = technical.get("pattern")
                 if pattern:
                     msg_parts.append(f"- 形態：{pattern}")
+                inst_signal = technical.get("institutional_signal")
+                if inst_signal:
+                    msg_parts.append(f"- 籌碼訊號：{inst_signal}")
+                consec = technical.get("consecutive_buy_days")
+                if consec is not None and consec > 0:
+                    msg_parts.append(f"- 連續買超：{consec} 日")
                 market_impact = technical.get("market_impact")
                 if market_impact:
                     msg_parts.append(f"- 市場連動：{market_impact}")

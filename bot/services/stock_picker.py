@@ -254,13 +254,18 @@ def _ai_pick(capital: float, period: str, risk: str,
             f"4. 籌碼面：法人連續買超天數越多越好，淨買超越大越好\n"
             f"5. 持有期間適合的流動性\n\n"
             f"同時判斷整體策略名稱（例如：穩健波段型、高息防禦型、動能突破型等）\n\n"
+            f"每檔股票請提供：\n"
+            f"- stop_loss：依風險承受度計算停損價（保守 -5%、穩健 -10%、積極 -15%），取整數\n"
+            f"- entry_signal：描述進場觸發條件（1句），例如「MA5 站上 MA20 且成交量放大 1.5 倍」\n\n"
             f"回覆 JSON，不要其他文字：\n"
             f'{{"strategy_name": "策略名稱",'
             f'"strategy_desc": "策略說明（1句）",'
             f'"stocks": ['
             f'{{"stock_id": "代號", "stock_name": "名稱", "close": 現價數字,'
             f'"can_buy_lot": true/false,'
-            f'"reason": "推薦理由（1句）"}},'
+            f'"reason": "推薦理由（1句）",'
+            f'"stop_loss": 停損價數字,'
+            f'"entry_signal": "進場觸發條件（1句）"}},'
             f'...'
             f']}}'
         )
@@ -295,6 +300,34 @@ def _strategy_type_from_inputs(period: str, risk: str) -> str:
         return "dca_stable"          # 任何 + 長期/定額
     else:
         return "momentum_mid"
+
+
+def _check_market_condition() -> str:
+    """
+    判斷大盤狀態：'bull' / 'bear' / 'neutral'
+    抓 ^TWII 近 20 日收盤，close > MA20 => bull；偏離 > -3% => neutral；其餘 => bear
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker("^TWII")
+        hist = ticker.history(period="2mo")
+        if hist is None or len(hist) < 10:
+            return "neutral"
+        closes = hist["Close"].dropna().tail(20)
+        if len(closes) < 10:
+            return "neutral"
+        close = float(closes.iloc[-1])
+        ma20 = float(closes.mean())
+        pct = (close - ma20) / ma20 * 100
+        if close > ma20:
+            return "bull"
+        elif pct > -3.0:
+            return "neutral"
+        else:
+            return "bear"
+    except Exception as e:
+        print(f"[stock_picker] 大盤狀態判斷失敗：{e}")
+        return "neutral"
 
 
 # ---------- Service ----------
@@ -391,9 +424,12 @@ class StockPickerService(ScriptedService):
         cache_key = _cache_key(risk, period, tier)
         cached = _load_cache(cache_key)
 
+        # 大盤過濾（快取命中時也需要判斷，讓警告保持即時）
+        market_condition = _check_market_condition()
+
         if cached:
             count = _increment_query_count(uid)
-            _send_result(uid, cached, capital, count, line)
+            _send_result(uid, cached, capital, count, line, market_condition=market_condition)
             return
 
         # 技術面篩選
@@ -413,21 +449,24 @@ class StockPickerService(ScriptedService):
 
         _save_cache(cache_key, ai_result)
         count = _increment_query_count(uid)
-        _send_result(uid, ai_result, capital, count, line)
+        _send_result(uid, ai_result, capital, count, line, market_condition=market_condition)
 
 
 def _send_result(uid: str, ai_result: Dict, capital: float,
-                 query_count: int, line) -> None:
+                 query_count: int, line, market_condition: str = "neutral") -> None:
     """格式化並推播選股結果"""
     strategy_name = ai_result.get("strategy_name", "個人化選股")
     strategy_desc = ai_result.get("strategy_desc", "")
     stocks = ai_result.get("stocks", [])
 
-    period_map = {"1": "短期", "2": "中期", "3": "長期/定額"}
-
     msg = f"📊 選股推薦｜{strategy_name}\n"
     msg += f"策略：{strategy_desc}\n"
-    msg += f"可投入資金：{capital:,.0f} 元\n\n"
+    msg += f"可投入資金：{capital:,.0f} 元\n"
+
+    if market_condition == "bear":
+        msg += "\n⚠️ 注意：目前大盤偏空，以下推薦風險較高，建議保守操作\n"
+
+    msg += "\n"
 
     number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
     for i, stock in enumerate(stocks[:5]):
@@ -440,13 +479,22 @@ def _send_result(uid: str, ai_result: Dict, capital: float,
 
         emoji = number_emojis[i] if i < len(number_emojis) else f"{i+1}."
 
+        stop_loss = stock.get("stop_loss")
+        entry_signal = stock.get("entry_signal", "")
+
         msg += f"{emoji} {stock_name}（{stock_id}）  {close} 元\n"
         if can_buy_lot:
             msg += f"   ✅ 可買整張（約 {one_lot_cost:,} 元）\n"
         else:
             lot_w = one_lot_cost // 10000
             msg += f"   ⚠️ 零股｜整張需約 {lot_w} 萬元\n"
-        msg += f"   {reason}\n\n"
+        msg += f"   {reason}\n"
+        if stop_loss and close > 0:
+            stop_loss_pct = round((close - stop_loss) / close * 100, 1)
+            msg += f"   🛑 停損：{stop_loss} 元（-{stop_loss_pct}%）\n"
+        if entry_signal:
+            msg += f"   📌 進場訊號：{entry_signal}\n"
+        msg += "\n"
 
     msg += "─────────────────\n"
     msg += "⚠️ 以上僅供參考，請自行評估是否適合買入\n"

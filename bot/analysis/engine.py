@@ -33,6 +33,7 @@ class AnalysisEngine:
         candle_data: str,
         current_price: float,
         market_context_text: str = "",
+        institutional_text: str = "",
     ) -> Dict[str, Any]:
         """
         盤前分析：技術面 + 進出場建議 + 風險提示
@@ -50,9 +51,11 @@ class AnalysisEngine:
             if cached:
                 return cached
 
-        # 技術面分析（盤前版本含市場背景）
+        # 技術面分析（盤前版本含市場背景 + 籌碼面）
         technical = self._analyze_technical(
-            stock_id, stock_name, candle_data, market_context_text=market_context_text
+            stock_id, stock_name, candle_data,
+            market_context_text=market_context_text,
+            institutional_text=institutional_text,
         )
         if not technical:
             return {}
@@ -88,6 +91,7 @@ class AnalysisEngine:
         stock_name: str,
         candle_data: str,
         current_price: float,
+        institutional_text: str = "",
     ) -> Dict[str, Any]:
         """
         盤後分析：技術面 + 進出場建議（明日展望）+ 風險提示
@@ -98,9 +102,10 @@ class AnalysisEngine:
             if cached:
                 return cached
 
-        # 技術面分析
+        # 技術面分析（含籌碼面）
         technical = self._analyze_technical(
-            stock_id, stock_name, candle_data
+            stock_id, stock_name, candle_data,
+            institutional_text=institutional_text,
         )
         if not technical:
             return {}
@@ -136,20 +141,24 @@ class AnalysisEngine:
         stock_name: str,
         candle_data: str,
         market_context_text: str = "",
+        institutional_text: str = "",
     ) -> Optional[Dict[str, Any]]:
         """技術面分析（有 market_context_text 時使用盤前含市場背景 prompt）"""
+        inst = institutional_text or "三大法人資料暫無"
         if market_context_text:
             prompt = TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT.format(
                 stock_id=stock_id,
                 stock_name=stock_name,
                 candle_data=candle_data,
                 market_context=market_context_text,
+                institutional_data=inst,
             )
         else:
             prompt = TECHNICAL_ANALYSIS_PROMPT.format(
                 stock_id=stock_id,
                 stock_name=stock_name,
                 candle_data=candle_data,
+                institutional_data=inst,
             )
 
         try:

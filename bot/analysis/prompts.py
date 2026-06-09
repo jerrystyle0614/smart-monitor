@@ -9,6 +9,9 @@ TECHNICAL_ANALYSIS_PROMPT = """
 最近 20 日 K 線資料：
 {candle_data}
 
+三大法人近 5 日資料：
+{institutional_data}
+
 請提供以下分析（用繁體中文，避免複雜術語）：
 
 1. **目前走勢**：
@@ -23,6 +26,10 @@ TECHNICAL_ANALYSIS_PROMPT = """
    - 成交量變化
    - 最近是否有異常訊號
 
+4. **籌碼面**：
+   - 外資/投信是買超還是賣超？
+   - 是否有連續買超信號？
+
 回應格式：JSON
 {{
   "trend": "上升/下降/盤整",
@@ -30,6 +37,8 @@ TECHNICAL_ANALYSIS_PROMPT = """
   "resistance": 125.50,
   "pattern": "形態名稱",
   "volume_signal": "訊號評估",
+  "institutional_signal": "買超/賣超/中性",
+  "consecutive_buy_days": 0,
   "summary": "白話總結"
 }}
 """
@@ -43,6 +52,9 @@ TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT = """
 最近 20 日 K 線資料：
 {candle_data}
 
+三大法人近 5 日資料：
+{institutional_data}
+
 請提供以下分析（用繁體中文，避免複雜術語）：
 
 1. **目前走勢**：
@@ -57,7 +69,11 @@ TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT = """
    - 成交量變化
    - 最近是否有異常訊號
 
-4. **市場連動影響**（根據上方市場背景）：
+4. **籌碼面**：
+   - 外資/投信是買超還是賣超？
+   - 是否有連續買超信號？
+
+5. **市場連動影響**（根據上方市場背景）：
    - 美股/台指期夜盤昨夜表現對今日開盤的影響方向
    - 此股票是否對外部指數敏感（如科技股對 SOX/Nasdaq、金融股對匯率）
    - 今日開盤偏多或偏空的預判
@@ -69,6 +85,8 @@ TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT = """
   "resistance": 125.50,
   "pattern": "形態名稱",
   "volume_signal": "訊號評估",
+  "institutional_signal": "買超/賣超/中性",
+  "consecutive_buy_days": 0,
   "market_impact": "市場背景影響說明",
   "open_bias": "偏多/偏空/中性",
   "summary": "白話總結（含市場背景影響）"
