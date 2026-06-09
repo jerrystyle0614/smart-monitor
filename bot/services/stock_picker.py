@@ -259,7 +259,7 @@ def _ai_pick(capital: float, period: str, risk: str,
             f'"strategy_desc": "策略說明（1句）",'
             f'"stocks": ['
             f'{{"stock_id": "代號", "stock_name": "名稱", "close": 現價數字,'
-            f'"can_buy_lot": true/false, "one_lot_cost": 整張成本數字,'
+            f'"can_buy_lot": true/false,'
             f'"reason": "推薦理由（1句）"}},'
             f'...'
             f']}}'
@@ -435,7 +435,7 @@ def _send_result(uid: str, ai_result: Dict, capital: float,
         stock_name = stock.get("stock_name", "")
         close = stock.get("close", 0)
         can_buy_lot = stock.get("can_buy_lot", False)
-        one_lot_cost = stock.get("one_lot_cost", 0)
+        one_lot_cost = int(close * 1000)  # 重新計算，不用 AI 回傳值（AI 常算錯）
         reason = stock.get("reason", "")
 
         emoji = number_emojis[i] if i < len(number_emojis) else f"{i+1}."
