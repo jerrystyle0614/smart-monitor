@@ -7,6 +7,7 @@ from typing import Tuple, Any, Optional
 
 from bot.services.base import Step, ScriptedService
 from bot.data.fugle_client import FugleClient
+from bot.data.market_context import fetch_market_context, format_market_context
 from bot.analysis.engine import AnalysisEngine
 from bot.analysis_runner import run_analysis_for_user, AnalysisMode
 
@@ -52,6 +53,14 @@ class PreMarketService(ScriptedService):
         line.reply(reply_token, "⏳ 正在進行盤前分析，請稍候...")
 
         try:
+            # 抓取市場背景資料（美股指數、台指期夜盤等）
+            market_ctx = fetch_market_context()
+            market_context_text = format_market_context(market_ctx) if market_ctx else ""
+            if market_context_text:
+                print("[pre_market] 市場背景已取得")
+            else:
+                print("[pre_market] 市場背景取得失敗，以純技術面分析")
+
             # 獲取最近 20 日 K 線資料
             candle_data = self._fetch_candle_data(stock_id)
 
@@ -63,18 +72,20 @@ class PreMarketService(ScriptedService):
                     # 盤前時使用昨日收盤價
                     current_price = float(df.iloc[-1].get("close", 0))
 
-                # 呼叫 AnalysisEngine 進行分析
+                # 呼叫 AnalysisEngine 進行分析（含市場背景）
                 analysis_result = self.analysis_engine.analyze_pre_market(
                     stock_id=stock_id,
                     stock_name=stock_name,
                     candle_data=candle_data,
                     current_price=current_price,
+                    market_context_text=market_context_text,
                 )
 
                 if analysis_result:
                     # 格式化訊息並推播
                     message = self._format_analysis_message(
-                        stock_id, stock_name, current_price, analysis_result
+                        stock_id, stock_name, current_price, analysis_result,
+                        market_context_text=market_context_text,
                     )
                     push_to_line(uid, message, line)
                 else:
@@ -131,7 +142,12 @@ class PreMarketService(ScriptedService):
             return None
 
     def _format_analysis_message(
-        self, stock_id: str, stock_name: str, current_price: float, analysis: dict
+        self,
+        stock_id: str,
+        stock_name: str,
+        current_price: float,
+        analysis: dict,
+        market_context_text: str = "",
     ) -> str:
         """
         將分析結果格式化為易讀的 LINE 訊息。
@@ -140,6 +156,11 @@ class PreMarketService(ScriptedService):
         msg_parts = [f"📊 盤前分析 - {stock_name} ({stock_id})"]
         msg_parts.append(f"目前價格：{current_price:.2f} 元")
         msg_parts.append("")
+
+        # 市場背景（若有）
+        if market_context_text:
+            msg_parts.append(market_context_text)
+            msg_parts.append("")
 
         # 技術面分析
         technical = analysis.get("technical", {})
@@ -156,6 +177,12 @@ class PreMarketService(ScriptedService):
                 pattern = technical.get("pattern")
                 if pattern:
                     msg_parts.append(f"- 形態：{pattern}")
+                market_impact = technical.get("market_impact")
+                if market_impact:
+                    msg_parts.append(f"- 市場連動：{market_impact}")
+                open_bias = technical.get("open_bias")
+                if open_bias:
+                    msg_parts.append(f"- 開盤預判：{open_bias}")
                 summary = technical.get("summary")
                 if summary:
                     msg_parts.append(f"- 總結：{summary}")
