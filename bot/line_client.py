@@ -7,6 +7,7 @@ import os
 from linebot.v3.messaging import (
     ApiClient, Configuration, MessagingApi,
     PushMessageRequest, ReplyMessageRequest,
+    MarkMessagesAsReadByTokenRequest,
     TextMessage,
 )
 
@@ -37,3 +38,21 @@ class LineClient:
             ))
         except Exception as e:
             print(f"[警告] LINE reply 失敗：{e}")
+
+    def mark_as_read(self, mark_as_read_token: str) -> None:
+        """
+        將使用者訊息標為已讀（需官方帳號開啟「聊天」功能）。
+        token 來自 webhook message event 的 markAsReadToken 欄位，
+        會將該訊息以前的所有訊息一併標為已讀。
+        失敗只印警告，不影響主流程。
+        """
+        if not mark_as_read_token:
+            return
+        try:
+            self._api.mark_messages_as_read_by_token(
+                MarkMessagesAsReadByTokenRequest(
+                    mark_as_read_token=mark_as_read_token
+                )
+            )
+        except Exception as e:
+            print(f"[警告] LINE mark_as_read 失敗：{e}")

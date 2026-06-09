@@ -118,8 +118,6 @@ async def webhook(request: Request):
 
         elif event_type == "message":
             msg = event.get("message", {})
-            if msg.get("type") != "text":
-                continue
 
             # 去重：同一個 message id 只處理一次，防止 LINE retry 重複觸發
             message_id = msg.get("id", "")
@@ -128,6 +126,13 @@ async def webhook(request: Request):
                 continue
             if message_id:
                 _seen_message_ids.append(message_id)
+
+            # 收到訊息立即標為已讀（涵蓋所有訊息類型，含貼圖/圖片），
+            # 讓使用者送出後馬上看到「已讀」，不必等 AI 分析完成
+            _line.mark_as_read(msg.get("markAsReadToken", ""))
+
+            if msg.get("type") != "text":
+                continue
 
             text = msg.get("text", "")
             reply_token = event.get("replyToken", "")
