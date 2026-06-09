@@ -46,8 +46,8 @@ def test_handle_message_cooldown_blocks(mock_store, mock_line):
     mock_store.check_cooldown.return_value = True
     mock_store.get_current_service.return_value = None
     handle_message("U456", "hello", mock_store, mock_line, "token")
-    mock_line.reply.assert_called()
-    call_text = str(mock_line.reply.call_args)
+    mock_line.push.assert_called()
+    call_text = str(mock_line.push.call_args)
     assert "太快" in call_text or "稍後" in call_text
 
 

@@ -89,10 +89,7 @@ def handle_message(uid, text, store, line, reply_token):
 
     # 冷卻檢查
     if store.check_cooldown(uid):
-        try:
-            line.reply(reply_token, "⏱️ 傳送訊息過於頻繁，請稍後再試。")
-        except Exception:
-            pass
+        line.push(uid, "⏱️ 傳送訊息過於頻繁，請稍後再試。")
         return
 
     # 確保用戶有設置 plan（防止舊用戶被鎖定在 free 方案）
