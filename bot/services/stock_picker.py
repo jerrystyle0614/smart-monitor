@@ -97,7 +97,7 @@ def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
     - 籌碼面：三大法人近 5 日淨買超方向
     依策略調整篩選條件嚴格度
     """
-    from daily_data import fetch_candles
+    from bot.services.prescan import _fetch_candles_yf
     from bot.stock_picker.finmind_client import FinMindClient
     import pandas as pd
 
@@ -117,7 +117,7 @@ def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
     for stock_id, stock_name in load_prescan_candidates():
         try:
             # --- 技術面 ---
-            df = fetch_candles(stock_id, days=60)
+            df = _fetch_candles_yf(stock_id, days=60)
             if df is None or len(df) < 20:
                 continue
 
