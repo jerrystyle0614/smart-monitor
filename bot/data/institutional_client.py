@@ -68,11 +68,19 @@ def get_institutional_data(stock_id: str, days: int = 5) -> Optional[Dict]:
             else:
                 break
 
+        trust_consecutive = 0
+        for d in sorted_dates:
+            if by_date[d]["trust"] > 0:
+                trust_consecutive += 1
+            else:
+                break
+
         return {
             "foreign_net": foreign_net,
             "trust_net": trust_net,
             "dealer_net": dealer_net,
             "consecutive_days": consecutive_days,
+            "trust_consecutive_days": trust_consecutive,
         }
     except Exception as e:
         print(f"[institutional] {stock_id} 法人資料取得失敗：{e}")

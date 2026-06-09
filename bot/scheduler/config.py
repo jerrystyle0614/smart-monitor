@@ -31,8 +31,15 @@ SCHEDULED_JOBS: List[ScheduledJob] = [
         name="stock_picker_daily",
         hour=8,
         minute=0,
-        func=None,  # 稍後在 jobs.py 中實現
+        func=None,
         description="每日 08:00 執行選股掃描並推播推薦股票"
+    ),
+    ScheduledJob(
+        name="prescan_daily",
+        hour=13,
+        minute=40,
+        func=None,
+        description="每日 13:40 盤後預掃前 300 大股票建立候選清單"
     ),
 ]
 
