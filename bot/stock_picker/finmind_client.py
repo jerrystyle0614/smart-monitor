@@ -84,12 +84,21 @@ class FinMindClient:
                 else:
                     break
 
+            # 計算投信單獨連續淨買超天數
+            trust_consecutive = 0
+            for d in sorted_dates:
+                if by_date[d]["trust"] > 0:
+                    trust_consecutive += 1
+                else:
+                    break
+
             return {
                 "consecutive_net_buy_days": consecutive_days,
                 "foreign_net": foreign_net,
                 "trust_net": trust_net,
                 "dealer_net": dealer_net,
                 "total_net": total_net,
+                "trust_consecutive_days": trust_consecutive,
                 "dates": sorted_dates,
             }
         except Exception as e:

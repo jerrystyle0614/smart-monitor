@@ -74,6 +74,15 @@ class ScheduledJobs:
 
         return result
 
+    def prescan_daily(self) -> None:
+        """每日盤後預掃（13:40）— 建立選股候選清單"""
+        try:
+            from bot.services.prescan import run_prescan
+            count = run_prescan()
+            logger.info(f"[prescan] 完成，候選股 {count} 支")
+        except Exception as e:
+            logger.error(f"[prescan] 預掃失敗：{e}")
+
     def _format_stock_picker_message(self, stocks: List) -> Optional[str]:
         """格式化選股推薦訊息"""
         if not stocks:

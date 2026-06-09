@@ -108,6 +108,7 @@ class SchedulerManager:
 
         mapping = {
             "stock_picker_daily": getattr(self.scheduled_jobs, "stock_picker_daily", None),
+            "prescan_daily": getattr(self.scheduled_jobs, "prescan_daily", None),
         }
         return mapping.get(job_name)
 

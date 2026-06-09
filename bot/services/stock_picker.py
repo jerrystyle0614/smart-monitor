@@ -88,24 +88,6 @@ def _increment_query_count(uid: str) -> int:
 # ---------- 技術面篩選 ----------
 
 # 預設掃描的股票池（涵蓋各類型，避免掃全市場太慢）
-_SCAN_UNIVERSE = [
-    # 大型權值股
-    ("2330", "台積電"), ("2317", "鴻海"), ("2454", "聯發科"),
-    ("2308", "台達電"), ("2382", "廣達"), ("3711", "日月光投控"),
-    ("2303", "聯電"), ("2412", "中華電"), ("2881", "富邦金"),
-    ("2882", "國泰金"), ("2886", "兆豐金"), ("2891", "中信金"),
-    # ETF
-    ("0050", "元大台灣50"), ("0056", "元大高股息"),
-    ("00878", "國泰永續高息"), ("00940", "元大台灣價值高息"),
-    ("00919", "群益台灣精選高息"), ("006208", "富邦台50"),
-    # 中型科技股
-    ("2379", "瑞昱"), ("3034", "聯詠"), ("6505", "台塑化"),
-    ("2395", "研華"), ("3008", "大立光"), ("2357", "華碩"),
-    ("2376", "技嘉"), ("5880", "合庫金"), ("2892", "第一金"),
-    # 低價股（方便小資族）
-    ("2002", "中鋼"), ("1301", "台塑"), ("1303", "南亞"),
-    ("1326", "台化"), ("2207", "和泰車"), ("9910", "豐泰"),
-]
 
 
 def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
@@ -119,19 +101,20 @@ def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
     from bot.stock_picker.finmind_client import FinMindClient
     import pandas as pd
 
-    # 依策略設定篩選參數
+    # 依策略設定篩選參數（含升級後的投信連買門檻）
     params = {
-        "aggressive_short":  {"ma_above": True,  "pullback_max": 12, "vol_ratio_min": 1.1, "require_institutional_buy": True},
-        "momentum_mid":      {"ma_above": True,  "pullback_max": 8,  "vol_ratio_min": 1.0, "require_institutional_buy": True},
-        "defensive_band":    {"ma_above": True,  "pullback_max": 5,  "vol_ratio_min": 0.8, "require_institutional_buy": False},
-        "high_yield_stable": {"ma_above": False, "pullback_max": 8,  "vol_ratio_min": 0.5, "require_institutional_buy": False},
-        "dca_stable":        {"ma_above": False, "pullback_max": 10, "vol_ratio_min": 0.5, "require_institutional_buy": False},
-    }.get(strategy_type, {"ma_above": True, "pullback_max": 8, "vol_ratio_min": 1.0, "require_institutional_buy": True})
+        "aggressive_short":  {"ma_above": True,  "pullback_max": 12, "vol_ratio_min": 1.3, "require_institutional_buy": True,  "trust_min_days": 3, "foreign_net_min": None},
+        "momentum_mid":      {"ma_above": True,  "pullback_max": 8,  "vol_ratio_min": 1.2, "require_institutional_buy": True,  "trust_min_days": 2, "foreign_net_min": None},
+        "defensive_band":    {"ma_above": True,  "pullback_max": 4,  "vol_ratio_min": 0.8, "require_institutional_buy": False, "trust_min_days": 0, "foreign_net_min": None},
+        "high_yield_stable": {"ma_above": False, "pullback_max": 8,  "vol_ratio_min": 0.5, "require_institutional_buy": False, "trust_min_days": 0, "foreign_net_min": -500},
+        "dca_stable":        {"ma_above": False, "pullback_max": 10, "vol_ratio_min": 0.5, "require_institutional_buy": False, "trust_min_days": 0, "foreign_net_min": None},
+    }.get(strategy_type, {"ma_above": True, "pullback_max": 8, "vol_ratio_min": 1.0, "require_institutional_buy": True, "trust_min_days": 0, "foreign_net_min": None})
 
+    from bot.services.prescan import load_prescan_candidates
     finmind = FinMindClient()
     results = []
 
-    for stock_id, stock_name in _SCAN_UNIVERSE:
+    for stock_id, stock_name in load_prescan_candidates():
         try:
             # --- 技術面 ---
             df = fetch_candles(stock_id, days=60)
@@ -166,11 +149,13 @@ def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
             inst_trust_net = 0
             inst_label = "無資料"
 
+            inst_trust_consecutive = 0
             if institutional:
                 inst_buy_days = institutional.get("consecutive_net_buy_days", 0)
                 inst_total_net = institutional.get("total_net", 0)
                 inst_foreign_net = institutional.get("foreign_net", 0)
                 inst_trust_net = institutional.get("trust_net", 0)
+                inst_trust_consecutive = institutional.get("trust_consecutive_days", 0)
 
                 if inst_total_net > 0:
                     inst_label = f"法人近5日淨買 {inst_total_net/1000:.0f}張"
@@ -179,6 +164,12 @@ def _scan_stocks(strategy_type: str, capital: float) -> List[Dict]:
 
             # 積極/動能策略要求法人淨買超
             if params["require_institutional_buy"] and inst_total_net <= 0:
+                continue
+            # 投信連續買超天數門檻
+            if params["trust_min_days"] > 0 and inst_trust_consecutive < params["trust_min_days"]:
+                continue
+            # 外資淨買超下限（high_yield_stable 用，避免外資大賣）
+            if params["foreign_net_min"] is not None and inst_foreign_net < params["foreign_net_min"]:
                 continue
 
             # 資金可否買整張
