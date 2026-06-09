@@ -87,21 +87,32 @@ def test_fetch_candles_failure(client):
 
 
 def test_load_stock_map_caches():
-    """load_stock_map 應快取結果"""
+    """load_stock_map 應從 tickers 端點載入並快取結果"""
     # 建立新的客戶端，確保 cache 為空
     fresh_client = FugleClient()
-    with patch("bot.data.fugle_client.pd.read_csv") as mock_read:
-        mock_read.return_value = pd.DataFrame({
-            "code": ["2330", "2454"],
-            "name": ["台積電", "聯發科"]
-        })
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        exchange = (params or {}).get("exchange")
+        data = {
+            "TWSE": [{"symbol": "2330", "name": "台積電"}],
+            "TPEx": [{"symbol": "4916", "name": "事欣科"}],
+        }.get(exchange, [])
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"data": data}
+        return resp
+
+    with patch("bot.data.fugle_client.requests.get", side_effect=fake_get) as mock_get:
         result1 = fresh_client.load_stock_map()
-        call_count_after_first = mock_read.call_count
+        call_count_after_first = mock_get.call_count
         result2 = fresh_client.load_stock_map()
-        call_count_after_second = mock_read.call_count
-    # 第一次呼叫應該讀取兩個 CSV（TWSE 和 TPEx）
+        call_count_after_second = mock_get.call_count
+
+    # 第一次呼叫應該打兩個交易所端點（TWSE 和 TPEx）
     assert call_count_after_first == 2
-    # 第二次呼叫使用快取，不再讀取
+    # 第二次呼叫使用快取，不再呼叫
     assert call_count_after_second == 2
-    assert "台積電" in result1
+    # 名稱→代號對照（上市 + 上櫃皆涵蓋）
     assert result1["台積電"] == "2330"
+    assert result1["事欣科"] == "4916"
+    assert result2 is result1

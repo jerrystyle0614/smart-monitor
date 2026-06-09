@@ -202,6 +202,7 @@ class FugleClient:
     def load_stock_map(self) -> Dict[str, str]:
         """
         載入全市場股票清單（名稱→代號）。
+        使用 marketdata v1.0 的 tickers 端點（上市 TWSE + 上櫃 TPEx）。
         快取結果避免重複下載。
         若 Fugle API 失敗，回退到 mock 資料。
         """
@@ -209,24 +210,28 @@ class FugleClient:
             return self._stock_map
 
         try:
-            # TWSE 上市股票
-            twse_url = (
-                "https://api.fugle.tw/realtime/download/"
-                "tse?apiToken=" + self.api_key
-            )
-            twse_df = pd.read_csv(twse_url)
-            twse_map = dict(zip(twse_df["name"], twse_df["code"]))
+            stock_map = {}
+            headers = {"X-API-KEY": self.api_key}
+            # 上市 TWSE + 上櫃 TPEx，合併為單一「名稱→代號」對照表
+            for exchange in ("TWSE", "TPEx"):
+                url = f"{self.base_url}/stock/intraday/tickers"
+                params = {
+                    "type": "EQUITY",
+                    "exchange": exchange,
+                    "isNormal": "true",
+                }
+                resp = requests.get(url, headers=headers, params=params, timeout=10)
+                resp.raise_for_status()
+                for item in resp.json().get("data", []):
+                    name = str(item.get("name", "")).strip()
+                    symbol = str(item.get("symbol", "")).strip()
+                    if name and symbol:
+                        stock_map[name] = symbol
 
-            # TPEx 上櫃股票
-            tpex_url = (
-                "https://api.fugle.tw/realtime/download/"
-                "otc?apiToken=" + self.api_key
-            )
-            tpex_df = pd.read_csv(tpex_url)
-            tpex_map = dict(zip(tpex_df["name"], tpex_df["code"]))
+            if not stock_map:
+                raise ValueError("tickers 回傳為空")
 
-            # 合併
-            self._stock_map = {**twse_map, **tpex_map}
+            self._stock_map = stock_map
             return self._stock_map
         except Exception as e:
             # 回退到 mock 資料（靜默處理）
