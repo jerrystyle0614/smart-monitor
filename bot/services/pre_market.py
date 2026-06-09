@@ -62,11 +62,11 @@ class PreMarketService(ScriptedService):
                 print("[pre_market] 市場背景取得失敗，以純技術面分析")
 
             # 獲取最近 20 日 K 線資料
-            candle_data = self._fetch_candle_data(stock_id)
+            candle_data = self._fetch_candle_data(stock_id, premarket=True)
 
             if candle_data:
-                # 從 K 線資料中提取昨日收盤價（倒數第二筆，因為今日盤前還沒有今日K線）
-                df = self.fugle_client.fetch_candles(stock_id, days=20)
+                # 從 K 線資料中提取昨日收盤價（盤前使用歷史最後一筆，不補今日）
+                df = self.fugle_client.fetch_candles(stock_id, days=20, premarket=True)
                 current_price = 0.0
                 if df is not None and len(df) > 0:
                     # 盤前時使用昨日收盤價
@@ -113,13 +113,13 @@ class PreMarketService(ScriptedService):
             "（輸入『跳過』略過風險評估）"
         )
 
-    def _fetch_candle_data(self, stock_id: str) -> Optional[str]:
+    def _fetch_candle_data(self, stock_id: str, premarket: bool = False) -> Optional[str]:
         """
         取得最近 20 日 K 線資料並格式化為字串。
         回傳格式化的 K 線資料字串，或 None（失敗）
         """
         try:
-            df = self.fugle_client.fetch_candles(stock_id, days=20)
+            df = self.fugle_client.fetch_candles(stock_id, days=20, premarket=premarket)
             if df is None or len(df) == 0:
                 return None
 

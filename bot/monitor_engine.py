@@ -144,7 +144,7 @@ class MonitorEngine:
                 if not stock_id:
                     continue
 
-                df = fugle.fetch_candles(stock_id, days=20)
+                df = fugle.fetch_candles(stock_id, days=20, premarket=is_premarket)
                 if df is None or len(df) == 0:
                     print(f"[monitor] {stock_id} K 線資料取得失敗，跳過")
                     continue

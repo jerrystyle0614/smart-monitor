@@ -105,13 +105,13 @@ class FugleClient:
 
         return None
 
-    def fetch_candles(self, stock_id: str, days: int = 60) -> pd.DataFrame:
+    def fetch_candles(self, stock_id: str, days: int = 60, premarket: bool = False) -> pd.DataFrame:
         """
         取得股票日 K 資料（官方 fugle_marketdata SDK，historical/candles）。
 
         注意：歷史日 K 端點通常落後一個交易日（盤後當日資料尚未入庫），
-        因此會額外用即時報價端點將「今日」資料補到 DataFrame 尾端，
-        確保盤後分析能取得當日收盤價與正確的 MA/高點。
+        因此預設會用即時報價補上今日 K 線（盤後適用）。
+        盤前分析（premarket=True）時不補今日，避免帶入尚未成交完的量。
 
         回傳 DataFrame with columns: date, open, high, low, close, volume
         """
@@ -144,8 +144,9 @@ class FugleClient:
             )
             df = df.sort_values("date").reset_index(drop=True)
 
-            # 歷史端點可能尚未包含今日資料，用即時報價補上今日 K 線
-            df = self._append_today_candle(stock_id, df)
+            # 盤後才補今日 K 線；盤前跳過，避免帶入不完整的當日成交量
+            if not premarket:
+                df = self._append_today_candle(stock_id, df)
 
             print(
                 f"[fugle] fetch_candles {stock_id} 取得 {len(df)} 筆，"
