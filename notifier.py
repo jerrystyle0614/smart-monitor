@@ -17,8 +17,9 @@ COLOR_RED    = 0xE74C3C  # 紅：停損 / 利空
 
 class DiscordNotifier:
     def __init__(self, webhook_url: Optional[str] = None):
-        # 優先讀環境變數，其次用傳入參數
-        self.webhook_url = os.environ.get("DISCORD_WEBHOOK_URL") or webhook_url
+        # 優先用明確傳入的 webhook_url（例如 error 頻道），
+        # 未指定時才退回環境變數 DISCORD_WEBHOOK_URL（一般頻道）
+        self.webhook_url = webhook_url or os.environ.get("DISCORD_WEBHOOK_URL")
         self.enabled = bool(self.webhook_url)
 
     def send(self, title: str, message: str, color: int = 0x3498DB) -> None:
