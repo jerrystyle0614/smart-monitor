@@ -11,17 +11,22 @@
 ```
 smart-monitor/
 ├── bot/
-│   ├── server.py              # 現有 LINE webhook（不動）
-│   ├── telegram_server.py     # 新增：Telegram Bot webhook handler
-│   ├── telegram_client.py     # 新增：push/reply 封裝（介面與 LineClient 一致）
-│   ├── router.py              # 不動
+│   ├── server.py              # FastAPI app 主體（lifespan + health，平台無關）
+│   ├── router.py              # 不動（平台中立）
 │   ├── user_store.py          # 擴充：支援 platform 參數、路徑分離
-│   ├── line_client.py         # 不動
 │   ├── monitor_engine.py      # 擴充：支援多 store/client
+│   ├── line_client.py         # shim，向下相容舊 import
 │   └── services/              # 完全不動
 │
-├── bot/telegram/              # 新增目錄
+├── bot/line/                  # 已完成
 │   ├── __init__.py
+│   ├── client.py              # LineClient（原 line_client.py）
+│   └── webhook.py             # LINE webhook 路由 + 簽章驗證
+│
+├── bot/telegram/              # 待實作
+│   ├── __init__.py
+│   ├── client.py              # TelegramClient（push/reply 介面與 LineClient 一致）
+│   ├── webhook.py             # Telegram webhook 路由
 │   ├── keyboard.py            # Inline Keyboard 產生器
 │   └── invite.py              # 邀請碼管理
 │
