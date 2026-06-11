@@ -7,18 +7,8 @@ users/
 # 執行/測試產生的快取
 cache/
 
-# 文件（除了 PHASE_C.md、PHASE_D.md 和其他重要文件）
-docs/*
-!docs/PHASE_C.md
-!docs/PHASE_D.md
-!docs/superpowers/
-docs/superpowers/*
-!docs/superpowers/specs/
-docs/superpowers/specs/*
-!docs/superpowers/specs/*.md
-!docs/superpowers/plans/
-docs/superpowers/plans/*
-!docs/superpowers/plans/*.md
+# 文件
+docs/
 
 # Python
 __pycache__/
