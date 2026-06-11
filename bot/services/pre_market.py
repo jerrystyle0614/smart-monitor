@@ -75,11 +75,11 @@ class PreMarketService(ScriptedService):
 
             if candle_data:
                 # 從 K 線資料中提取昨日收盤價（盤前使用歷史最後一筆，不補今日）
-                df = self.fugle_client.fetch_candles(stock_id, days=20, premarket=True)
+                from bot.services.prescan import _fetch_candles_yf
+                df = _fetch_candles_yf(stock_id, days=20)
                 current_price = 0.0
                 if df is not None and len(df) > 0:
-                    # 盤前時使用昨日收盤價
-                    current_price = float(df.iloc[-1].get("close", 0))
+                    current_price = float(df.iloc[-1]["close"])
 
                 # 呼叫 AnalysisEngine 進行分析（含市場背景 + 籌碼面）
                 analysis_result = self.analysis_engine.analyze_pre_market(
@@ -133,7 +133,8 @@ class PreMarketService(ScriptedService):
         回傳格式化的 K 線資料字串，或 None（失敗）
         """
         try:
-            df = self.fugle_client.fetch_candles(stock_id, days=20, premarket=premarket)
+            from bot.services.prescan import _fetch_candles_yf
+            df = _fetch_candles_yf(stock_id, days=20)
             if df is None or len(df) == 0:
                 return None
 

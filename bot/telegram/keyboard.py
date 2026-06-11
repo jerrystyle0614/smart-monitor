@@ -27,7 +27,29 @@ def cancel_keyboard():
     # type: () -> List[List[dict]]
     """問答流程中的取消按鈕"""
     return [
-        [{"text": "❌ 取消", "callback_data": "cancel"}],
+        [{"text": "❌ 取消", "callback_data": "取消"}],
+    ]
+
+
+def skip_cancel_keyboard():
+    # type: () -> List[List[dict]]
+    """可選步驟：跳過 + 取消"""
+    return [
+        [
+            {"text": "⏭ 跳過", "callback_data": "跳過"},
+            {"text": "❌ 取消", "callback_data": "取消"},
+        ]
+    ]
+
+
+def confirm_cancel_keyboard():
+    # type: () -> List[List[dict]]
+    """確認步驟：確認 + 取消"""
+    return [
+        [
+            {"text": "✅ 確認", "callback_data": "確認"},
+            {"text": "❌ 取消", "callback_data": "取消"},
+        ]
     ]
 
 

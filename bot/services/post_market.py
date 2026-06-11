@@ -66,10 +66,11 @@ class PostMarketService(ScriptedService):
 
             if candle_data:
                 # 從 K 線資料中提取今日收盤價（最後一筆）
-                df = self.fugle_client.fetch_candles(stock_id, days=20)
+                from bot.services.prescan import _fetch_candles_yf
+                df = _fetch_candles_yf(stock_id, days=20)
                 current_price = 0.0
                 if df is not None and len(df) > 0:
-                    current_price = float(df.iloc[-1].get("close", 0))
+                    current_price = float(df.iloc[-1]["close"])
 
                 # 呼叫 AnalysisEngine 進行分析（含籌碼面）
                 analysis_result = self.analysis_engine.analyze_post_market(
@@ -117,7 +118,8 @@ class PostMarketService(ScriptedService):
         回傳格式化的 K 線資料字串，或 None（失敗）
         """
         try:
-            df = self.fugle_client.fetch_candles(stock_id, days=20)
+            from bot.services.prescan import _fetch_candles_yf
+            df = _fetch_candles_yf(stock_id, days=20)
             if df is None or len(df) == 0:
                 return None
 

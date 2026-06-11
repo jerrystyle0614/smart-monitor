@@ -6,9 +6,27 @@ telegram/client.py — Telegram Bot API 推播/回覆封裝
 import os
 import requests
 from typing import Optional
-from bot.telegram.keyboard import main_menu_keyboard, to_inline_markup, cancel_keyboard
+from bot.telegram.keyboard import (
+    main_menu_keyboard, cancel_keyboard,
+    skip_cancel_keyboard, confirm_cancel_keyboard,
+    to_inline_markup,
+)
 
 _BASE = "https://api.telegram.org/bot{token}/{method}"
+
+
+def _auto_keyboard(text):
+    # type: (str) -> dict
+    """根據訊息內容自動選擇對應的 inline keyboard，沒有則回傳空 dict"""
+    if "📊 Smart 助理" in text:
+        return to_inline_markup(main_menu_keyboard())
+    if "輸入「確認」" in text or "輸入「確認」" in text:
+        return to_inline_markup(confirm_cancel_keyboard())
+    if "輸入『跳過』略過" in text:
+        return to_inline_markup(skip_cancel_keyboard())
+    if "輸入『取消』回主選單" in text:
+        return to_inline_markup(cancel_keyboard())
+    return {}
 
 
 class TelegramClient:
@@ -34,7 +52,11 @@ class TelegramClient:
     def push(self, chat_id, text):
         # type: (str, str) -> None
         """主動推播訊息給使用者"""
-        self._post("sendMessage", {"chat_id": chat_id, "text": text})
+        payload = {"chat_id": chat_id, "text": text}
+        kb = _auto_keyboard(text)
+        if kb:
+            payload["reply_markup"] = kb
+        self._post("sendMessage", payload)
 
     def reply(self, token, text):
         # type: (str, str) -> None
@@ -47,13 +69,15 @@ class TelegramClient:
 
         if kind == "cbq" and len(parts) == 3:
             self._post("answerCallbackQuery", {"callback_query_id": parts[1]})
-            payload = {"chat_id": parts[2], "text": text}
-            if text.startswith("📊"):
-                payload["reply_markup"] = to_inline_markup(main_menu_keyboard())
-            self._post("sendMessage", payload)
+            chat_id = parts[2]
         else:
             chat_id = parts[1] if len(parts) >= 2 else token
-            self._post("sendMessage", {"chat_id": chat_id, "text": text})
+
+        payload = {"chat_id": chat_id, "text": text}
+        kb = _auto_keyboard(text)
+        if kb:
+            payload["reply_markup"] = kb
+        self._post("sendMessage", payload)
 
     def send_menu(self, chat_id):
         # type: (str) -> None

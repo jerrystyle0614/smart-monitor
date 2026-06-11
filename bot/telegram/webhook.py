@@ -5,7 +5,7 @@ telegram/webhook.py — Telegram Webhook 路由
 import logging
 from fastapi import Request
 
-from bot.router import handle_message, handle_follow
+from bot.router import handle_message
 from bot.telegram.invite import verify_invite, bind_invite
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ def register(app, store, tg_client):
                     tg_client.send_menu(chat_id)
                 else:
                     _pending_invite.add(chat_id)
-                    tg_client.push(chat_id, "👋 歡迎使用 Smart Monitor！\n\n請輸入邀請碼以啟用服務：")
+                    tg_client.push(chat_id, "👋 歡迎使用 Smart 股市助理！\n\n請輸入邀請碼以啟用服務：")
                 return {"ok": True}
 
             # 等待邀請碼輸入
@@ -54,7 +54,9 @@ def register(app, store, tg_client):
                     bind_invite(code, chat_id)
                     store.set_plan(chat_id, plan)
                     _pending_invite.discard(chat_id)
-                    handle_follow(chat_id, store, tg_client)
+                    tg_client.push(chat_id,
+                        "✅ 邀請碼驗證成功！歡迎加入 Smart 股市助理。"
+                    )
                     tg_client.send_menu(chat_id)
                 else:
                     tg_client.push(chat_id, "❌ 邀請碼錯誤或已使用，請重新輸入：")

@@ -23,7 +23,7 @@ def test_cancel_keyboard_has_one_button():
     kb = cancel_keyboard()
     buttons = [btn for row in kb for btn in row]
     assert len(buttons) == 1
-    assert buttons[0]["callback_data"] == "cancel"
+    assert buttons[0]["callback_data"] == "取消"
 
 
 def test_to_inline_markup_structure():
@@ -31,4 +31,4 @@ def test_to_inline_markup_structure():
     from bot.telegram.keyboard import cancel_keyboard, to_inline_markup
     markup = to_inline_markup(cancel_keyboard())
     assert "inline_keyboard" in markup
-    assert markup["inline_keyboard"][0][0]["callback_data"] == "cancel"
+    assert markup["inline_keyboard"][0][0]["callback_data"] == "取消"

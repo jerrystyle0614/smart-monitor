@@ -8,5 +8,10 @@
     "plan": "pro",
     "used": false,
     "chat_id": null
+  },
+  "SMAD84": {
+    "plan": "pro",
+    "used": true,
+    "chat_id": "8389589380"
   }
 }
