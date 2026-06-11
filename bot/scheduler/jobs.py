@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from bot.user_store import UserStore
-from bot.line_client import LineClient
+from bot.line.client import LineClient
 from bot.stock_picker.engine import StockPickerEngine
 
 
