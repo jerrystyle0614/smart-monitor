@@ -5,6 +5,7 @@ etf_picker.py — ETF 推薦服務
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
@@ -147,9 +148,7 @@ def _fetch_etf_data(stock_id: str) -> Optional[Dict]:
 
 
 def _scan_etfs(goal: str, capital: float) -> List[Dict]:
-    """依目標篩選 ETF，回傳通過初篩的清單（含技術指標）。"""
-    universe = _ETF_UNIVERSE.get(goal, [])
-    # 三種目標都掃，但排序不同
+    """依目標篩選 ETF，回傳通過初篩的清單（含技術指標）。並行抓取各 ETF 資料。"""
     if goal == "index":
         targets = _ETF_UNIVERSE["index"]
     elif goal == "dividend":
@@ -157,9 +156,23 @@ def _scan_etfs(goal: str, capital: float) -> List[Dict]:
     else:
         targets = _ETF_UNIVERSE["theme"]
 
+    # 並行抓取所有 ETF 資料
+    fetched = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_map = {executor.submit(_fetch_etf_data, sid): (sid, sname)
+                      for sid, sname in targets}
+        for future in as_completed(future_map):
+            sid, sname = future_map[future]
+            try:
+                fetched[sid] = (sname, future.result())
+            except Exception as e:
+                print(f"[etf_picker] {sid} 並行抓取失敗：{e}")
+
     results = []
-    for stock_id, stock_name in targets:
-        data = _fetch_etf_data(stock_id)
+    for stock_id, stock_name in targets:  # 保持原清單順序
+        if stock_id not in fetched:
+            continue
+        _, data = fetched[stock_id]
         if data is None:
             continue
 
@@ -292,7 +305,7 @@ def _send_result(uid: str, ai_result: Dict, capital: float,
 
     msg += "⚠️ 以上為系統分析參考，非投資建議，請自行評估風險。"
 
-    line.push(uid, msg)
+    line.push_with_menu(uid, msg)
 
 
 # ---------- 服務主體 ----------

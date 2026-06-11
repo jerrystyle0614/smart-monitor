@@ -79,6 +79,16 @@ class TelegramClient:
             payload["reply_markup"] = kb
         self._post("sendMessage", payload)
 
+    def push_with_menu(self, chat_id, text):
+        # type: (str, str) -> None
+        """推播訊息並附上回主選單按鈕"""
+        from bot.telegram.keyboard import main_menu_keyboard, to_inline_markup
+        self._post("sendMessage", {
+            "chat_id": chat_id,
+            "text": text + "\n\n🏠 請選擇下一步：",
+            "reply_markup": to_inline_markup(main_menu_keyboard()),
+        })
+
     def send_menu(self, chat_id):
         # type: (str) -> None
         """發送附 Inline Keyboard 的主選單"""

@@ -388,6 +388,7 @@ def _handle_risk_assessment(uid, text, store, line, reply_token):
     if text == "跳過":
         store.clear_service_state(uid)
         line.reply(reply_token, "已略過風險評估。")
+        line.push_with_menu(uid, "分析結果已送出，需要其他服務嗎？")
         return
 
     # --- 第一步：等待持股數輸入 ---
@@ -580,11 +581,11 @@ def _run_risk_analysis(uid, draft, line):
             f"⚖️ 風險報酬比：1 : {rr_ratio}　風險等級：{risk_level}\n\n"
             f"💡 Smart 建議\n{summary}"
         )
-        line.push(uid, msg)
+        line.push_with_menu(uid, msg)
 
     except Exception as e:
         print(f"[risk] 風險評估失敗：{e}")
-        line.push(uid, "❌ 風險評估失敗，請稍後再試。")
+        line.push_with_menu(uid, "❌ 風險評估失敗，請稍後再試。")
 
 
 def _handle_delete(uid, text, store, line, reply_token):

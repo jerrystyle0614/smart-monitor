@@ -2,6 +2,7 @@
 telegram/webhook.py — Telegram Webhook 路由
 處理 Telegram Update 事件：/start 邀請碼驗證、訊息、CallbackQuery
 """
+import asyncio
 import logging
 from fastapi import Request
 
@@ -62,8 +63,9 @@ def register(app, store, tg_client):
                     tg_client.push(chat_id, "❌ 邀請碼錯誤或已使用，請重新輸入：")
                 return {"ok": True}
 
-            # 一般訊息 → 路由
-            handle_message(chat_id, text, store, tg_client, reply_token)
+            # 一般訊息 → 路由（背景執行，避免阻塞 webhook response）
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, handle_message, chat_id, text, store, tg_client, reply_token)
             return {"ok": True}
 
         # --- CallbackQuery（按鈕點擊）---
@@ -72,12 +74,26 @@ def register(app, store, tg_client):
             query_id = callback_query.get("id", "")
             chat_id = str(callback_query.get("from", {}).get("id", ""))
             data = callback_query.get("data", "")
+            message_id = str(callback_query.get("message", {}).get("message_id", ""))
             if not chat_id or not data:
                 return {"ok": True}
 
             reply_token = "cbq:{}:{}".format(query_id, chat_id)
             logger.info("[telegram] callback chat_id={} data={!r}".format(chat_id, data))
-            handle_message(chat_id, data, store, tg_client, reply_token)
+
+            def _handle_callback():
+                # 消除按鈕 loading + 隱藏被點擊的 keyboard
+                tg_client._post("answerCallbackQuery", {"callback_query_id": query_id})
+                if message_id:
+                    tg_client._post("editMessageReplyMarkup", {
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reply_markup": {"inline_keyboard": []},
+                    })
+                handle_message(chat_id, data, store, tg_client, reply_token)
+
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, _handle_callback)
             return {"ok": True}
 
         return {"ok": True}

@@ -489,7 +489,6 @@ def _send_result(uid: str, ai_result: Dict, capital: float,
 
     msg += "─────────────────\n"
     msg += "⚠️ 以上僅供參考，請自行評估是否適合買入\n"
-    msg += f"今日已查詢：{query_count}/{MAX_DAILY_QUERIES} 次\n"
-    msg += "（重新輸入 4 可調整條件重新選股）"
+    msg += f"今日已查詢：{query_count}/{MAX_DAILY_QUERIES} 次"
 
-    line.push(uid, msg)
+    line.push_with_menu(uid, msg)

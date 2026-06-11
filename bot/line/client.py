@@ -38,6 +38,10 @@ class LineClient:
         except Exception as e:
             print(f"[警告] LINE reply 失敗：{e}")
 
+    def push_with_menu(self, user_id: str, text: str) -> None:
+        """推播訊息後附上回主選單提示（LINE 純文字，無 inline keyboard）"""
+        self.push(user_id, text + "\n\n輸入任意內容回主選單")
+
     def mark_as_read(self, mark_as_read_token: str) -> None:
         """將使用者訊息標為已讀。失敗只印警告，不影響主流程。"""
         if not mark_as_read_token:
