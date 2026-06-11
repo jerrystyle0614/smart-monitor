@@ -12,3 +12,4 @@ cryptography>=41.0
 apscheduler>=3.10
 finmind>=2.1
 twstock>=1.7
+python-telegram-bot>=20.0
