@@ -63,7 +63,16 @@ smart-monitor/
 │       └── config.py          # 排程時間設定
 │
 ├── notifier.py                # Discord Webhook 推播
+├── daily_data.py              # Fugle 歷史日K 抓取（舊版，部分模組仍使用）
+├── market_data.py             # 行情來源封裝（MockMarketData / RealMarketData）
+├── strategy.py                # Alert 資料類別與警報條件判斷
+├── swing_strategy.py          # MA20 + 高點回撤波段分析
+├── analyze.py                 # 手動觸發盤前/盤後分析入口
+├── main.py                    # 舊版主程式入口（已由 bot/server.py 取代）
+├── mock_stocks.py             # 測試用模擬股票資料
 ├── set_invite.py              # 產生 Telegram 邀請碼 CLI
+├── set_user_plan.py           # 手動設定使用者方案 CLI
+├── migrate_users.py           # 一次性資料遷移腳本（users/ → users/line/）
 ├── data/
 │   └── invites.json           # Telegram 邀請碼儲存
 └── users/
