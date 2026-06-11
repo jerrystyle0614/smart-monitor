@@ -206,3 +206,27 @@ def test_set_alert_fired(store):
     })
     store.set_alert_fired(uid, 0, "stop", True)
     assert store.get_alert_fired(uid, 0, "stop") == True
+
+
+def test_platform_line_uses_line_subdir(tmp_path):
+    """platform='line' 時資料應存在 users/line/{uid}/ 下"""
+    store = UserStore(platform="line")
+    store.data_dir = str(tmp_path / "users" / "line")
+    Path(store.data_dir).mkdir(parents=True, exist_ok=True)
+    store.set_plan("U123", "pro")
+    assert (tmp_path / "users" / "line" / "U123" / "profile.json").exists()
+
+
+def test_platform_telegram_uses_telegram_subdir(tmp_path):
+    """platform='telegram' 時資料應存在 users/telegram/{chat_id}/ 下"""
+    store = UserStore(platform="telegram")
+    store.data_dir = str(tmp_path / "users" / "telegram")
+    Path(store.data_dir).mkdir(parents=True, exist_ok=True)
+    store.set_plan("123456789", "basic")
+    assert (tmp_path / "users" / "telegram" / "123456789" / "profile.json").exists()
+
+
+def test_default_platform_is_line(tmp_path):
+    """預設 platform 應為 line"""
+    store = UserStore()
+    assert "line" in store.data_dir

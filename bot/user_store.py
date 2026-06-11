@@ -50,14 +50,16 @@ class UserStore:
     """使用者資料儲存（三檔案架構：profile / state / watchlist）"""
 
     # class-level default — can be patched via patch.object(UserStore, "data_dir", ...)
-    data_dir = os.environ.get("USER_DATA_DIR", "users")
+    data_dir = os.environ.get("USER_DATA_DIR", "users/line")
 
-    def __init__(self):
+    def __init__(self, platform: str = "line"):
         # Honour env var at construction time, but do NOT overwrite if already
         # patched at the class level (the fixture patches before instantiation).
         env_val = os.environ.get("USER_DATA_DIR")
         if env_val and env_val != UserStore.data_dir:
             self.data_dir = env_val  # type: ignore[assignment]
+        else:
+            self.data_dir = "users/{}".format(platform)
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
