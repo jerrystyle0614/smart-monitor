@@ -11,6 +11,11 @@ cache/
 docs/*
 !docs/PHASE_C.md
 !docs/PHASE_D.md
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/*.md
 
 # Python
 __pycache__/
