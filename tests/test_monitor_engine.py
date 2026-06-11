@@ -99,3 +99,39 @@ def test_no_alert_when_price_unavailable():
     with patch("bot.monitor_engine.fetch_price", return_value=None):
         alerts = engine._check_user("u1")
     assert alerts == []
+
+
+def test_monitor_engine_accepts_stores_and_clients_dict():
+    """MonitorEngine 應接受 stores dict 和 clients dict"""
+    from bot.monitor_engine import MonitorEngine
+    from unittest.mock import MagicMock
+
+    line_store = MagicMock()
+    tg_store = MagicMock()
+    line_client = MagicMock()
+    tg_client = MagicMock()
+    discord = MagicMock()
+
+    engine = MonitorEngine(
+        stores={"line": line_store, "telegram": tg_store},
+        clients={"line": line_client, "telegram": tg_client},
+        discord=discord,
+    )
+    assert engine._stores["line"] is line_store
+    assert engine._clients["telegram"] is tg_client
+
+
+def test_monitor_engine_get_client_returns_correct_client():
+    """_get_client 應根據 platform 回傳對應 client"""
+    from bot.monitor_engine import MonitorEngine
+    from unittest.mock import MagicMock
+
+    line_client = MagicMock()
+    tg_client = MagicMock()
+    engine = MonitorEngine(
+        stores={"line": MagicMock(), "telegram": MagicMock()},
+        clients={"line": line_client, "telegram": tg_client},
+        discord=MagicMock(),
+    )
+    assert engine._get_client("telegram") is tg_client
+    assert engine._get_client("line") is line_client

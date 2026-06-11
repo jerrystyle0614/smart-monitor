@@ -21,8 +21,9 @@ from notifier import DiscordNotifier
 
 logger = logging.getLogger(__name__)
 
-_store = UserStore()
+_line_store = UserStore(platform="line")
 _line = LineClient()
+_store = _line_store  # backward compat alias
 _engine = None
 
 
@@ -38,7 +39,11 @@ async def lifespan(app: FastAPI):
         logger.error("[startup] Stock map load failed: {}".format(e))
 
     discord = DiscordNotifier()
-    _engine = MonitorEngine(_store, _line, discord)
+    _engine = MonitorEngine(
+        stores={"line": _line_store},
+        clients={"line": _line},
+        discord=discord,
+    )
     _engine.start()
 
     try:

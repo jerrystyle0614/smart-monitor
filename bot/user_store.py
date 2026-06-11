@@ -52,11 +52,16 @@ class UserStore:
     # class-level default — can be patched via patch.object(UserStore, "data_dir", ...)
     data_dir = os.environ.get("USER_DATA_DIR", "users/line")
 
+    _default_data_dir = os.environ.get("USER_DATA_DIR", "users/line")
+
     def __init__(self, platform: str = "line"):
-        # Honour env var at construction time, but do NOT overwrite if already
-        # patched at the class level (the fixture patches before instantiation).
+        # If class-level data_dir was patched (e.g. by tests), use it as-is.
+        # Otherwise derive from platform.
         env_val = os.environ.get("USER_DATA_DIR")
-        if env_val and env_val != UserStore.data_dir:
+        class_patched = UserStore.data_dir != UserStore._default_data_dir
+        if class_patched:
+            self.data_dir = UserStore.data_dir  # type: ignore[assignment]
+        elif env_val:
             self.data_dir = env_val  # type: ignore[assignment]
         else:
             self.data_dir = "users/{}".format(platform)

@@ -19,7 +19,7 @@ _TZ_OFFSET    = datetime.timezone(datetime.timedelta(hours=8))
 
 # 每日分析推播的觸發時間（UTC+8）
 _ANALYSIS_TIMES = [
-    datetime.time(8, 30),   # 盤前
+    datetime.time(8, 50),   # 盤前
     datetime.time(13, 35),  # 盤後
 ]
 
@@ -48,6 +48,57 @@ def seconds_until_next_open() -> float:
     return (candidate - now).total_seconds()
 
 
+def _fetch_candles_for_analysis(stock_id: str, days: int, is_premarket: bool):
+    """用 yfinance 抓歷史日K供分析用，盤後補上 Fugle 即時報價作為當日收盤。"""
+    try:
+        import yfinance as yf
+        import pandas as pd
+
+        ticker = yf.Ticker(f"{stock_id}.TW")
+        period = f"{max(days // 20, 2)}mo"
+        df = ticker.history(period=period)
+        if df is None or df.empty:
+            return None
+
+        df = df.dropna(subset=["Close"])
+        df = df.reset_index()
+        df["date"] = df["Date"].astype(str).str[:10]
+        df["open"] = df["Open"]
+        df["high"] = df["High"]
+        df["low"] = df["Low"]
+        df["close"] = df["Close"]
+        df["volume"] = (df["Volume"] / 1000).round().astype(int)
+        df = df[["date", "open", "high", "low", "close", "volume"]].tail(days)
+
+        # 盤後才補當日即時報價（確保今日收盤價正確）
+        if not is_premarket:
+            try:
+                live_price = fetch_price(stock_id)
+                if live_price and live_price > 0:
+                    today = datetime.date.today().isoformat()
+                    if df.iloc[-1]["date"] < today:
+                        import numpy as np
+                        new_row = pd.DataFrame([{
+                            "date": today,
+                            "open": live_price,
+                            "high": live_price,
+                            "low": live_price,
+                            "close": live_price,
+                            "volume": 0,
+                        }])
+                        df = pd.concat([df, new_row], ignore_index=True).tail(days)
+                    else:
+                        df.loc[df.index[-1], "close"] = live_price
+            except Exception:
+                pass
+
+        return df
+
+    except Exception as e:
+        print(f"[monitor] {stock_id} yfinance K線取得失敗：{e}")
+        return None
+
+
 def fetch_price(stock_id: str):
     """從 Fugle REST API 查詢最新股價（收盤或即時價），失敗回傳 None"""
     api_key = os.environ.get("FUGLE_API_KEY")
@@ -68,13 +119,30 @@ def fetch_price(stock_id: str):
 
 
 class MonitorEngine:
-    def __init__(self, store, line, discord):
-        self._store = store
-        self._line = line
+    def __init__(self, stores, clients, discord):
+        # stores: {"line": UserStore, ...} OR a bare UserStore (backward compat)
+        # clients: {"line": LineClient, ...} OR a bare client (backward compat)
+        if isinstance(stores, dict):
+            self._stores = stores
+            self._clients = clients
+            self._store = stores.get("line") or next(iter(stores.values()))
+            self._line = clients.get("line") or next(iter(clients.values()))
+        else:
+            # Legacy positional: MonitorEngine(store, client, discord)
+            self._store = stores
+            self._line = clients
+            self._stores = {"line": stores}
+            self._clients = {"line": clients}
         self._discord = discord
         self._running = False
         self._thread = None
         self._analysis_fired = set()  # 記錄今日已觸發的分析，格式："YYYY-MM-DD HH:MM"
+
+    def _get_client(self, platform: str):
+        return self._clients.get(platform, self._line)
+
+    def _get_store(self, platform: str):
+        return self._stores.get(platform, self._store)
 
     def start(self):
         """啟動背景監控執行緒，若已在執行中則略過（防止重複啟動）"""
@@ -103,18 +171,23 @@ class MonitorEngine:
             fire_key = f"{now.strftime('%Y-%m-%d')} {t.strftime('%H:%M')}"
             window = abs((now.hour * 60 + now.minute) - (t.hour * 60 + t.minute))
             if window <= 2 and fire_key not in self._analysis_fired:
-                mode = AnalysisMode.PREMARKET if t == datetime.time(8, 30) else AnalysisMode.POSTMARKET
+                mode = AnalysisMode.PREMARKET if t == _ANALYSIS_TIMES[0] else AnalysisMode.POSTMARKET
                 return True, mode, fire_key
         return False, None, ""
 
     def _run_analysis_all(self, mode) -> None:
-        """對所有 MONITORING 使用者執行分析並推播（走新 AnalysisEngine）"""
+        """對所有平台的 MONITORING 使用者執行分析並推播"""
+        for platform, store in self._stores.items():
+            client = self._get_client(platform)
+            self._run_analysis_for_store(store, client, mode)
+
+    def _run_analysis_for_store(self, store, client, mode) -> None:
+        """對指定 store 的所有 MONITORING 使用者執行分析並推播"""
         from bot.analysis_runner import AnalysisMode
         from bot.analysis.engine import AnalysisEngine
-        from bot.data.fugle_client import FugleClient
         from bot.data.market_context import fetch_market_context, format_market_context
 
-        users = self._store.get_all_monitoring_users()
+        users = store.get_all_monitoring_users()
         if not users:
             return
 
@@ -134,10 +207,9 @@ class MonitorEngine:
                 print(f"[monitor] 市場背景取得失敗：{e}")
 
         engine = AnalysisEngine(use_cache=True)
-        fugle = FugleClient()
 
         for uid in users:
-            watchlist = self._store.get_watchlist(uid)
+            watchlist = store.get_watchlist(uid)
             if not watchlist:
                 continue
             for stock in watchlist:
@@ -147,14 +219,13 @@ class MonitorEngine:
                     if not stock_id:
                         continue
 
-                    df = fugle.fetch_candles(stock_id, days=20, premarket=is_premarket)
+                    df = _fetch_candles_for_analysis(stock_id, days=20, is_premarket=is_premarket)
                     if df is None or len(df) == 0:
                         print(f"[monitor] {stock_id} K 線資料取得失敗，跳過")
                         continue
 
                     current_price = float(df.iloc[-1].get("close", 0))
 
-                    # 格式化 K 線文字
                     lines = ["日期\t\t開盤\t\t高\t\t低\t\t收盤\t\t成交量"]
                     for _, row in df.iterrows():
                         lines.append(
@@ -192,7 +263,7 @@ class MonitorEngine:
                         mode_label=mode_label,
                         market_context_text=market_context_text if is_premarket else "",
                     )
-                    self._line.push(uid, message)
+                    client.push(uid, message)
                     self._discord.send(
                         f"{mode_label}分析 - {stock_name}({stock_id})",
                         message,
@@ -304,29 +375,35 @@ class MonitorEngine:
             time.sleep(0.5)
 
     def _scan_all(self):
-        """掃描所有 MONITORING 使用者並處理警報"""
-        users = self._store.get_all_monitoring_users()
-        for uid in users:
-            try:
-                alerts = self._check_user(uid)
-                if alerts:
-                    self._dispatch(uid, alerts)
-            except Exception as e:
-                print(f"[monitor] 處理使用者 {uid} 失敗：{e}")
+        """掃描所有平台的 MONITORING 使用者並處理警報"""
+        for platform, store in self._stores.items():
+            client = self._get_client(platform)
+            users = store.get_all_monitoring_users()
+            for uid in users:
+                try:
+                    alerts = self._check_user_with_store(uid, store)
+                    if alerts:
+                        self._dispatch_with_client(uid, alerts, store, client)
+                except Exception as e:
+                    print(f"[monitor] 處理使用者 {uid}（{platform}）失敗：{e}")
 
-    def _check_user(self, uid):
+    def _check_user_with_store(self, uid, store):
         """查詢所有監控股票的股價並比對條件，回傳觸發的警報列表"""
-        watchlist = self._store.get_watchlist(uid)
+        watchlist = store.get_watchlist(uid)
         if not watchlist:
             return []
 
         alerts = []
         for stock_index, stock in enumerate(watchlist):
-            stock_alerts = self._check_stock(uid, stock_index, stock)
+            stock_alerts = self._check_stock_with_store(uid, stock_index, stock, store)
             alerts.extend(stock_alerts)
         return alerts
 
-    def _check_stock(self, uid, stock_index, stock):
+    def _check_user(self, uid):
+        """向下相容包裝"""
+        return self._check_user_with_store(uid, self._store)
+
+    def _check_stock_with_store(self, uid, stock_index, stock, store):
         """查詢單支股票的股價並比對條件，回傳觸發的警報列表"""
         stock_id = stock.get("stock_id")
         if not stock_id:
@@ -337,7 +414,6 @@ class MonitorEngine:
         stop_raw = stock.get("stop_loss_moving")
         target1_raw = stock.get("target_stage_1")
 
-        # 敏感欄位解密後為字串，需轉為 float
         try:
             cost = float(cost_raw) if cost_raw is not None else None
         except (ValueError, TypeError):
@@ -357,11 +433,9 @@ class MonitorEngine:
 
         alerts = []
 
-        # 停損條件：股價 <= 停損價，且尚未觸發過
-        # 不在此處設定 fired 旗標，由 _dispatch 在推播成功後再設定
         if (stop is not None
                 and price <= stop
-                and not self._store.get_alert_fired(uid, stock_index, "stop")):
+                and not store.get_alert_fired(uid, stock_index, "stop")):
             pct = "{:+.2f}%".format((price - cost) / cost * 100) if cost else ""
             alerts.append({
                 "title": "⚠️ 停損觸發",
@@ -376,11 +450,9 @@ class MonitorEngine:
                 "stock_index": stock_index,
             })
 
-        # 目標一條件：股價 >= 目標一價，且尚未觸發過
-        # 不在此處設定 fired 旗標，由 _dispatch 在推播成功後再設定
         if (target1 is not None
                 and price >= target1
-                and not self._store.get_alert_fired(uid, stock_index, "target1")):
+                and not store.get_alert_fired(uid, stock_index, "target1")):
             pct = "{:+.2f}%".format((price - cost) / cost * 100) if cost else ""
             alerts.append({
                 "title": "🎯 目標一達成",
@@ -397,11 +469,18 @@ class MonitorEngine:
 
         return alerts
 
-    def _dispatch(self, uid, alerts):
-        """將警報同時推播到 LINE 和 Discord，推播成功後才設定 fired 旗標"""
+    def _check_stock(self, uid, stock_index, stock):
+        """向下相容包裝"""
+        return self._check_stock_with_store(uid, stock_index, stock, self._store)
+
+    def _dispatch_with_client(self, uid, alerts, store, client):
+        """將警報推播到指定 client 和 Discord，推播成功後才設定 fired 旗標"""
         for alert in alerts:
-            self._line.push(uid, "{}\n\n{}".format(alert["title"], alert["message"]))
+            client.push(uid, "{}\n\n{}".format(alert["title"], alert["message"]))
             self._discord.send(alert["title"], alert["message"], alert["color"])
-            # 推播完成後才標記已觸發，確保失敗時下次仍能重送
             stock_index = alert.get("stock_index", 0)
-            self._store.set_alert_fired(uid, stock_index, alert["fired_key"], True)
+            store.set_alert_fired(uid, stock_index, alert["fired_key"], True)
+
+    def _dispatch(self, uid, alerts):
+        """向下相容包裝"""
+        self._dispatch_with_client(uid, alerts, self._store, self._line)
