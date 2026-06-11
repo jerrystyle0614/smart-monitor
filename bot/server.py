@@ -1,7 +1,8 @@
 """
 server.py — FastAPI app 主體
 負責 lifespan 管理、全域例外處理、health endpoint
-LINE webhook 路由由 bot/line/webhook.py 掛載
+LINE webhook：bot/line/webhook.py
+Telegram webhook：bot/telegram/webhook.py
 """
 
 import logging
@@ -12,6 +13,8 @@ from fastapi import FastAPI, Request
 
 from bot.line.client import LineClient
 from bot.line import webhook as line_webhook
+from bot.telegram.client import TelegramClient
+from bot.telegram import webhook as tg_webhook
 from bot.user_store import UserStore
 from bot.data.fugle_client import FugleClient
 from bot.monitor_engine import MonitorEngine
@@ -22,9 +25,11 @@ from notifier import DiscordNotifier
 logger = logging.getLogger(__name__)
 
 _line_store = UserStore(platform="line")
-_line = LineClient()
-_store = _line_store  # backward compat alias
-_engine = None
+_tg_store   = UserStore(platform="telegram")
+_line       = LineClient()
+_tg         = TelegramClient()
+_store      = _line_store  # backward compat alias
+_engine     = None
 
 
 @asynccontextmanager
@@ -32,23 +37,22 @@ async def lifespan(app: FastAPI):
     global _engine
 
     try:
-        client = FugleClient()
-        client.load_stock_map()
+        FugleClient().load_stock_map()
         logger.info("[startup] Stock map loaded")
     except Exception as e:
         logger.error("[startup] Stock map load failed: {}".format(e))
 
     discord = DiscordNotifier()
     _engine = MonitorEngine(
-        stores={"line": _line_store},
-        clients={"line": _line},
+        stores={"line": _line_store, "telegram": _tg_store},
+        clients={"line": _line, "telegram": _tg},
         discord=discord,
     )
     _engine.start()
 
     try:
         scheduled_jobs = ScheduledJobs(
-            user_store=_store,
+            user_store=_line_store,
             line_client=_line,
             stock_picker_engine=None,
         )
@@ -59,12 +63,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("[startup] Scheduler initialization failed: {}".format(e))
 
+    # 設定 Telegram webhook URL（若 token 已設定）
+    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    tg_webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL", "")
+    if tg_token and tg_webhook_url:
+        try:
+            import requests
+            url = "https://api.telegram.org/bot{}/setWebhook".format(tg_token)
+            resp = requests.post(url, json={"url": tg_webhook_url}, timeout=10)
+            logger.info("[startup] Telegram webhook set: {}".format(resp.json()))
+        except Exception as e:
+            logger.error("[startup] Telegram webhook setup failed: {}".format(e))
+
     yield
 
     if hasattr(app.state, 'scheduler_manager'):
-        scheduler_manager = app.state.scheduler_manager
-        if scheduler_manager.is_running:
-            scheduler_manager.stop()
+        if app.state.scheduler_manager.is_running:
+            app.state.scheduler_manager.stop()
             logger.info("[shutdown] Scheduler manager stopped")
 
     if _engine:
@@ -73,8 +88,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# 掛載 LINE webhook 路由
-line_webhook.register(app, _store, _line)
+line_webhook.register(app, _line_store, _line)
+tg_webhook.register(app, _tg_store, _tg)
 
 
 @app.exception_handler(Exception)
