@@ -164,13 +164,18 @@ class MonitorEngine:
         """
         判斷現在是否應觸發分析推播。
         回傳 (should_run, mode, fire_key)
+
+        觸發條件：now >= 分析時間 且 now < 分析時間 + 15 分鐘
+        （允許 server 重啟後補推，避免在觸發窗口內重啟導致漏推）
         """
         from bot.analysis_runner import AnalysisMode
         now = datetime.datetime.now(_TZ_OFFSET)
+        now_mins = now.hour * 60 + now.minute
         for t in _ANALYSIS_TIMES:
-            fire_key = f"{now.strftime('%Y-%m-%d')} {t.strftime('%H:%M')}"
-            window = abs((now.hour * 60 + now.minute) - (t.hour * 60 + t.minute))
-            if window <= 2 and fire_key not in self._analysis_fired:
+            fire_key = "{} {}".format(now.strftime('%Y-%m-%d'), t.strftime('%H:%M'))
+            t_mins = t.hour * 60 + t.minute
+            # 已到達分析時間，且在 15 分鐘補推窗口內
+            if t_mins <= now_mins < t_mins + 15 and fire_key not in self._analysis_fired:
                 mode = AnalysisMode.PREMARKET if t == _ANALYSIS_TIMES[0] else AnalysisMode.POSTMARKET
                 return True, mode, fire_key
         return False, None, ""
@@ -209,7 +214,11 @@ class MonitorEngine:
         engine = AnalysisEngine(use_cache=True)
 
         for uid in users:
-            watchlist = store.get_watchlist(uid)
+            try:
+                watchlist = store.get_watchlist(uid)
+            except Exception as e:
+                print(f"[monitor] 處理使用者 {uid} 失敗：{e}")
+                continue
             if not watchlist:
                 continue
             for stock in watchlist:
@@ -350,19 +359,33 @@ class MonitorEngine:
                     print(f"[monitor] 掃描異常：{e}")
                 self._sleep(POLL_INTERVAL_SEC)
             else:
-                # 非交易時段：若接近分析時間（08:28~08:32、13:33~13:37）繼續每 30 秒輪詢
-                # 否則休眠到下次開盤前 10 分鐘
+                # 非交易時段：若在分析時間前後 15 分鐘內，繼續每 30 秒輪詢
+                # 否則休眠到下次分析時間前 5 分鐘
                 now = datetime.datetime.now(_TZ_OFFSET)
+                now_mins = now.hour * 60 + now.minute
                 near_analysis = any(
-                    abs((now.hour * 60 + now.minute) - (t.hour * 60 + t.minute)) <= 5
+                    -5 <= (now_mins - (t.hour * 60 + t.minute)) < 15
                     for t in _ANALYSIS_TIMES
                 )
                 if near_analysis:
                     self._sleep(POLL_INTERVAL_SEC)
                 else:
-                    secs = seconds_until_next_open()
-                    # 提前 10 分鐘醒來，確保 08:30 盤前分析能觸發
-                    wake_secs = max(secs - 600, 60)
+                    # 計算距離下一個分析時間還有幾秒
+                    secs_to_analysis = None
+                    for t in _ANALYSIS_TIMES:
+                        t_mins = t.hour * 60 + t.minute
+                        diff = t_mins - now_mins
+                        if diff > 0:  # 今天尚未到達的分析時間
+                            s = diff * 60 - now.second
+                            if secs_to_analysis is None or s < secs_to_analysis:
+                                secs_to_analysis = s
+                    if secs_to_analysis is None:
+                        # 今天所有分析時間都過了，等到明天第一個
+                        t0 = _ANALYSIS_TIMES[0]
+                        next_mins = (24 * 60 - now_mins) + t0.hour * 60 + t0.minute
+                        secs_to_analysis = next_mins * 60 - now.second
+                    # 提前 5 分鐘醒來
+                    wake_secs = max(secs_to_analysis - 300, 60)
                     print(f"[monitor] 非交易時段，休眠 {int(wake_secs // 60)} 分鐘")
                     self._sleep(wake_secs)
 
