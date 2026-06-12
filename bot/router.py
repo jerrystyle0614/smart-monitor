@@ -283,11 +283,24 @@ def _show_watchlist(uid, store, line, reply_token):
             msg += " | 停損 {} 元".format(stop_loss)
         msg += "\n"
 
-    msg += "\n可用指令：\n"
-    msg += "『1』— 新增監控\n"
-    msg += "『刪除 [數字]』— 移除監控\n"
-    msg += "『說明 1~4』— 查看各服務說明"
-    line.reply(reply_token, msg)
+    # Telegram：附上刪除按鈕；LINE：顯示文字指令提示
+    if hasattr(line, "_post"):
+        from bot.telegram.keyboard import watchlist_delete_keyboard, to_inline_markup
+        # chat_id 從 reply_token 解析：cbq:{qid}:{chat_id} 或 msg:{chat_id}:{msg_id}
+        parts = reply_token.split(":")
+        chat_id = parts[2] if parts[0] == "cbq" else parts[1]
+        line.reply(reply_token, msg)
+        line._post("sendMessage", {
+            "chat_id": chat_id,
+            "text": "點擊下方按鈕刪除監控：",
+            "reply_markup": to_inline_markup(watchlist_delete_keyboard(watchlist)),
+        })
+    else:
+        msg += "\n可用指令：\n"
+        msg += "『1』— 新增監控\n"
+        msg += "『刪除 [數字]』— 移除監控\n"
+        msg += "『說明 1~4』— 查看各服務說明"
+        line.reply(reply_token, msg)
 
 
 def _handle_help(uid, text, line, reply_token):

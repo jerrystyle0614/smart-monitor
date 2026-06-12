@@ -53,6 +53,16 @@ def confirm_cancel_keyboard():
     ]
 
 
+def watchlist_delete_keyboard(watchlist):
+    # type: (list) -> List[List[dict]]
+    """監控清單刪除按鈕（每支一顆，callback_data = '刪除 N'）"""
+    return [
+        [{"text": "🗑 刪除 {} {}".format(i, s.get("stock_name", s.get("stock_id", ""))),
+          "callback_data": "刪除 {}".format(i)}]
+        for i, s in enumerate(watchlist, 1)
+    ]
+
+
 def to_inline_markup(keyboard):
     # type: (List[List[dict]]) -> dict
     """將 list[list[dict]] 轉為 Telegram InlineKeyboardMarkup dict"""
