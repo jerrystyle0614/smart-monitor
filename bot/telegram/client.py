@@ -94,7 +94,19 @@ class TelegramClient:
         """發送附 Inline Keyboard 的主選單"""
         self._post("sendMessage", {
             "chat_id": chat_id,
-            "text": "📊 Smart Monitor 服務選單\n\n請選擇服務：",
+            "text": (
+                "📊 Smart 助理\n\n"
+                "請選擇服務：\n"
+                "1️⃣ 股票監控\n"
+                "2️⃣ 盤前分析\n"
+                "3️⃣ 盤後分析\n"
+                "4️⃣ 選股推薦\n"
+                "5️⃣ ETF 推薦\n\n"
+                "輸入數字選擇服務\n"
+                "『狀態』— 查看監控清單\n"
+                "『說明』或『說明 1~5』— 查看使用說明\n"
+                "『取消』— 任何步驟中途回到此選單"
+            ),
             "reply_markup": to_inline_markup(main_menu_keyboard()),
         })
 
