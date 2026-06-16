@@ -8,6 +8,7 @@ import threading
 import time
 import os
 import datetime
+import fcntl
 import requests
 
 POLL_INTERVAL_SEC = 30
@@ -19,7 +20,7 @@ _TZ_OFFSET    = datetime.timezone(datetime.timedelta(hours=8))
 
 # 每日分析推播的觸發時間（UTC+8）
 _ANALYSIS_TIMES = [
-    datetime.time(8, 50),   # 盤前
+    datetime.time(8, 40),   # 盤前
     datetime.time(13, 35),  # 盤後
 ]
 
@@ -95,7 +96,7 @@ def _fetch_candles_for_analysis(stock_id: str, days: int, is_premarket: bool):
         return df
 
     except Exception as e:
-        print(f"[monitor] {stock_id} yfinance K線取得失敗：{e}")
+        print(f"[monitor] {stock_id} yfinance K線取得失敗：{e}", flush=True)
         return None
 
 
@@ -114,7 +115,7 @@ def fetch_price(stock_id: str):
             data = r.json()
             return data.get("closePrice") or data.get("lastPrice")
     except Exception as e:
-        print(f"[monitor] 查詢 {stock_id} 失敗：{e}")
+        print(f"[monitor] 查詢 {stock_id} 失敗：{e}", flush=True)
     return None
 
 
@@ -136,7 +137,8 @@ class MonitorEngine:
         self._discord = discord
         self._running = False
         self._thread = None
-        self._analysis_fired = set()  # 記錄今日已觸發的分析，格式："YYYY-MM-DD HH:MM"
+        self._fired_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "log", "analysis_fired.json")
+        self._analysis_fired = self._load_fired()  # 記錄今日已觸發的分析，格式："YYYY-MM-DD HH:MM"
 
     def _get_client(self, platform: str):
         return self._clients.get(platform, self._line)
@@ -151,18 +153,59 @@ class MonitorEngine:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        print("[monitor] 背景監控引擎已啟動")
+        print("[monitor] 背景監控引擎已啟動", flush=True)
 
     def stop(self):
         """停止背景監控執行緒，並等待執行緒結束（最多 35 秒）"""
         self._running = False
         if self._thread:
             self._thread.join(timeout=35)
-        print("[monitor] 背景監控引擎已停止")
+        print("[monitor] 背景監控引擎已停止", flush=True)
+
+    def _load_fired(self):
+        today = datetime.datetime.now(_TZ_OFFSET).strftime('%Y-%m-%d')
+        try:
+            os.makedirs(os.path.dirname(self._fired_path), exist_ok=True)
+            with open(self._fired_path, 'r') as f:
+                data = json.load(f)
+            return set(k for k in data.get("fired", []) if k.startswith(today))
+        except Exception:
+            return set()
+
+    def _claim_fire_key(self, fire_key):
+        # type: (str) -> bool
+        """原子性地取得分析觸發權（file lock），回傳 True 代表本 process 可執行分析。
+        防止多個 process 同時運行時重複推播。"""
+        lock_path = self._fired_path + ".lock"
+        try:
+            os.makedirs(os.path.dirname(self._fired_path), exist_ok=True)
+            with open(lock_path, 'w') as lf:
+                fcntl.flock(lf, fcntl.LOCK_EX)
+                try:
+                    with open(self._fired_path, 'r') as f:
+                        data = json.load(f)
+                except Exception:
+                    data = {"fired": []}
+
+                fired_list = data.get("fired", [])
+                if fire_key in fired_list:
+                    return False
+
+                fired_list.append(fire_key)
+                with open(self._fired_path, 'w') as f:
+                    json.dump({"fired": fired_list}, f)
+                self._analysis_fired.add(fire_key)
+                return True
+        except Exception as e:
+            print("[monitor] 分析觸發鎖定失敗：{}".format(e), flush=True)
+            if fire_key not in self._analysis_fired:
+                self._analysis_fired.add(fire_key)
+                return True
+            return False
 
     def _should_run_analysis(self):
         """
-        判斷現在是否應觸發分析推播。
+        判斷現在是否應觸發分析推播，並原子性地取得觸發權。
         回傳 (should_run, mode, fire_key)
 
         觸發條件：now >= 分析時間 且 now < 分析時間 + 15 分鐘
@@ -174,10 +217,10 @@ class MonitorEngine:
         for t in _ANALYSIS_TIMES:
             fire_key = "{} {}".format(now.strftime('%Y-%m-%d'), t.strftime('%H:%M'))
             t_mins = t.hour * 60 + t.minute
-            # 已到達分析時間，且在 15 分鐘補推窗口內
             if t_mins <= now_mins < t_mins + 15 and fire_key not in self._analysis_fired:
-                mode = AnalysisMode.PREMARKET if t == _ANALYSIS_TIMES[0] else AnalysisMode.POSTMARKET
-                return True, mode, fire_key
+                if self._claim_fire_key(fire_key):
+                    mode = AnalysisMode.PREMARKET if t == _ANALYSIS_TIMES[0] else AnalysisMode.POSTMARKET
+                    return True, mode, fire_key
         return False, None, ""
 
     def _run_analysis_all(self, mode) -> None:
@@ -198,7 +241,7 @@ class MonitorEngine:
 
         is_premarket = (mode == AnalysisMode.PREMARKET)
         mode_label = "盤前" if is_premarket else "盤後"
-        print(f"[monitor] 執行{mode_label}分析，共 {len(users)} 位使用者")
+        print(f"[monitor] 執行{mode_label}分析，共 {len(users)} 位使用者", flush=True)
 
         # 盤前才抓市場背景（所有使用者共用同一份）
         market_context_text = ""
@@ -207,9 +250,9 @@ class MonitorEngine:
                 ctx = fetch_market_context()
                 market_context_text = format_market_context(ctx) if ctx else ""
                 if market_context_text:
-                    print("[monitor] 盤前市場背景已取得")
+                    print("[monitor] 盤前市場背景已取得", flush=True)
             except Exception as e:
-                print(f"[monitor] 市場背景取得失敗：{e}")
+                print(f"[monitor] 市場背景取得失敗：{e}", flush=True)
 
         engine = AnalysisEngine(use_cache=True)
 
@@ -217,7 +260,7 @@ class MonitorEngine:
             try:
                 watchlist = store.get_watchlist(uid)
             except Exception as e:
-                print(f"[monitor] 處理使用者 {uid} 失敗：{e}")
+                print(f"[monitor] 處理使用者 {uid} 失敗：{e}", flush=True)
                 continue
             if not watchlist:
                 continue
@@ -230,7 +273,7 @@ class MonitorEngine:
 
                     df = _fetch_candles_for_analysis(stock_id, days=20, is_premarket=is_premarket)
                     if df is None or len(df) == 0:
-                        print(f"[monitor] {stock_id} K 線資料取得失敗，跳過")
+                        print(f"[monitor] {stock_id} K 線資料取得失敗，跳過", flush=True)
                         continue
 
                     current_price = float(df.iloc[-1].get("close", 0))
@@ -264,7 +307,7 @@ class MonitorEngine:
                         )
 
                     if not result:
-                        print(f"[monitor] {stock_id} 分析結果為空，跳過")
+                        print(f"[monitor] {stock_id} 分析結果為空，跳過", flush=True)
                         continue
 
                     message = self._format_scheduled_message(
@@ -281,8 +324,8 @@ class MonitorEngine:
 
                 except Exception as e:
                     import traceback
-                    print(f"[monitor] {stock_id} 分析推播失敗 uid={uid}：{e}")
-                    print(traceback.format_exc())
+                    print(f"[monitor] {stock_id} 分析推播失敗 uid={uid}：{e}", flush=True)
+                    print(traceback.format_exc(), flush=True)
 
     def _format_scheduled_message(
         self, stock_id, stock_name, current_price, analysis,
@@ -348,7 +391,6 @@ class MonitorEngine:
             # 分析推播不受交易時段限制（08:30 盤前、13:35 盤後都需觸發）
             should_run, mode, fire_key = self._should_run_analysis()
             if should_run:
-                self._analysis_fired.add(fire_key)
                 self._run_analysis_all(mode)
 
             if is_trading_hours():
@@ -356,7 +398,7 @@ class MonitorEngine:
                 try:
                     self._scan_all()
                 except Exception as e:
-                    print(f"[monitor] 掃描異常：{e}")
+                    print(f"[monitor] 掃描異常：{e}", flush=True)
                 self._sleep(POLL_INTERVAL_SEC)
             else:
                 # 非交易時段：若在分析時間前後 15 分鐘內，繼續每 30 秒輪詢
@@ -386,7 +428,7 @@ class MonitorEngine:
                         secs_to_analysis = next_mins * 60 - now.second
                     # 提前 5 分鐘醒來
                     wake_secs = max(secs_to_analysis - 300, 60)
-                    print(f"[monitor] 非交易時段，休眠 {int(wake_secs // 60)} 分鐘")
+                    print(f"[monitor] 非交易時段，休眠 {int(wake_secs // 60)} 分鐘", flush=True)
                     self._sleep(wake_secs)
 
     def _sleep(self, total_secs: float):
@@ -408,7 +450,7 @@ class MonitorEngine:
                     if alerts:
                         self._dispatch_with_client(uid, alerts, store, client)
                 except Exception as e:
-                    print(f"[monitor] 處理使用者 {uid}（{platform}）失敗：{e}")
+                    print(f"[monitor] 處理使用者 {uid}（{platform}）失敗：{e}", flush=True)
 
     def _check_user_with_store(self, uid, store):
         """查詢所有監控股票的股價並比對條件，回傳觸發的警報列表"""
