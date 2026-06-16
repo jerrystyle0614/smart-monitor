@@ -1,5 +1,6 @@
 # 敏感資訊
 .env
+.env.local
 
 # 使用者資料
 users/
