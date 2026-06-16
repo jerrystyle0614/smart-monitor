@@ -368,10 +368,10 @@ class MonitorEngine:
             parts.append(section)
             ep = entry_exit.get("entry_price")
             if ep:
-                parts.append(f"- {'建議進場' if mode_label == '盤前' else '建議監控'}價：{ep}")
+                parts.append(f"- 建議進場價：{ep}")
             sl = entry_exit.get("stop_loss")
             if sl:
-                parts.append(f"- 停損：{sl}")
+                parts.append(f"- 低於 {sl} 元，考慮停損")
             targets = entry_exit.get("exit_targets")
             if isinstance(targets, dict):
                 parts.append(

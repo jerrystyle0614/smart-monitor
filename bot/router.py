@@ -6,7 +6,6 @@ router.py — ServiceRouter 主路由模組
 from typing import Optional, Dict, List
 
 from bot.services.stock_monitor import StockMonitorService
-from bot.services.pre_market import PreMarketService
 from bot.services.post_market import PostMarketService
 from bot.services.stock_picker import StockPickerService
 from bot.services.etf_picker import ETFPickerService
@@ -14,21 +13,18 @@ from bot.services.etf_picker import ETFPickerService
 
 SERVICE_PERMISSIONS = {
     "stock_monitor": ["free", "basic", "pro"],
-    "pre_market":    ["basic", "pro"],
     "post_market":   ["basic", "pro"],
     "stock_picker":  ["pro"],
     "etf_picker":    ["pro"],
 }
 
 _ADD_STOCK = StockMonitorService()
-_PRE_MARKET = PreMarketService()
 _POST_MARKET = PostMarketService()
 _STOCK_PICKER = StockPickerService()
 _ETF_PICKER = ETFPickerService()
 
 _SERVICE_MAP = {
     "stock_monitor": _ADD_STOCK,
-    "pre_market": _PRE_MARKET,
     "post_market": _POST_MARKET,
     "stock_picker": _STOCK_PICKER,
     "etf_picker": _ETF_PICKER,
@@ -62,20 +58,21 @@ def handle_follow(uid, store, line):
     line.push(uid,
         "👋 歡迎使用 Smart 助理！\n\n"
         "我是您的投資助理。\n"
-        "提供股票監控、盤前/盤後分析、選股推薦等服務。"
+        "提供股票監控（含每日盤前分析）、單檔分析、AI 選股等服務。"
     )
     line.push(uid,
         "=================\n"
         "📊 Smart 助理\n\n"
         "請選擇服務：\n"
-        "1️⃣ 股票監控\n"
-        "2️⃣ 盤前分析\n"
-        "3️⃣ 盤後分析\n"
-        "4️⃣ 選股推薦\n"
-        "5️⃣ ETF 推薦\n\n"
-        "輸入數字選擇\n"
+        "以下為系統指令，請在對話框輸入執行：\n"
         "『狀態』— 查看監控清單\n"
-        "『說明』或『說明 1~5』— 查看使用說明\n"
+        "『說明』或『說明 1~4』— 查看使用說明\n"
+        "『取消』— 任何步驟中途回到此選單\n\n"
+        "請輸入數字選擇服務：\n"
+        "1️⃣ 股票監控\n"
+        "2️⃣ 單檔分析\n"
+        "3️⃣ AI 選股\n"
+        "4️⃣ ETF 推薦\n"
         "================="
     )
 
@@ -120,7 +117,7 @@ def handle_message(uid, text, store, line, reply_token):
         return
 
     # 主菜單路由
-    if text in ("1", "2", "3", "4", "5"):
+    if text in ("1", "2", "3", "4"):
         _handle_menu(uid, text, store, line, reply_token)
     elif text in ("狀態", "status"):
         _show_watchlist(uid, store, line, reply_token)
@@ -153,10 +150,9 @@ def _handle_menu(uid, choice, store, line, reply_token):
 
     service_map = {
         "1": ("stock_monitor", _ADD_STOCK),
-        "2": ("pre_market", _PRE_MARKET),
-        "3": ("post_market", _POST_MARKET),
-        "4": ("stock_picker", _STOCK_PICKER),
-        "5": ("etf_picker", _ETF_PICKER),
+        "2": ("post_market", _POST_MARKET),
+        "3": ("stock_picker", _STOCK_PICKER),
+        "4": ("etf_picker", _ETF_PICKER),
     }
 
     service_name, service = service_map.get(choice, (None, None))
@@ -168,7 +164,7 @@ def _handle_menu(uid, choice, store, line, reply_token):
     allowed_plans = SERVICE_PERMISSIONS.get(service_name, [])
     if plan not in allowed_plans:
         if service_name in ("stock_picker", "etf_picker"):
-            label = "選股推薦" if service_name == "stock_picker" else "ETF 推薦"
+            label = "AI 選股" if service_name == "stock_picker" else "ETF 推薦"
             line.reply(reply_token,
                 f"⚠️ {label}為 pro 方案專屬功能。\n"
                 "請聯絡管理員了解升級方式。"
@@ -246,22 +242,20 @@ def _show_menu(uid, store, line, reply_token):
     menu = (
         "━━━━━━━━━━━━━━━━━━\n"
         "📊 Smart 助理\n\n"
-        "請選擇服務：\n"
-        "1️⃣ 股票監控\n"
+        "以下為系統指令，請在對話框輸入執行：\n"
+        "『狀態』— 查看監控清單\n"
+        "『說明』或『說明 1~4』— 查看使用說明\n"
+        "『取消』— 任何步驟中途回到此選單\n\n"
+        "請輸入數字選擇服務：\n"
     )
 
     if plan in ("basic", "pro"):
-        menu += "2️⃣ 盤前分析\n"
-        menu += "3️⃣ 盤後分析\n"
+        menu += "2️⃣ 單檔分析\n"
 
     if plan == "pro":
-        menu += "4️⃣ 選股推薦\n"
-        menu += "5️⃣ ETF 推薦\n"
+        menu += "3️⃣ AI 選股\n"
+        menu += "4️⃣ ETF 推薦\n"
 
-    menu += "\n輸入數字選擇服務\n"
-    menu += "『狀態』— 查看監控清單\n"
-    menu += "『說明』或『說明 1~5』— 查看使用說明\n"
-    menu += "『取消』— 任何步驟中途回到此選單\n"
     menu += "━━━━━━━━━━━━━━━━━━"
 
     line.reply(reply_token, menu)
@@ -306,7 +300,8 @@ def _show_watchlist(uid, store, line, reply_token):
         msg += "\n可用指令：\n"
         msg += "『1』— 新增監控\n"
         msg += "『刪除 [數字]』— 移除監控\n"
-        msg += "『說明 1~4』— 查看各服務說明"
+        msg += "『說明 1~4』— 查看各服務說明\n"
+        msg += "（訂閱監控的股票將於 08:40 自動收到盤前分析）"
         line.reply(reply_token, msg)
 
 
@@ -320,10 +315,9 @@ def _handle_help(uid, text, line, reply_token):
         "📖 Smart 助理 使用說明\n\n"
         "📊 主要功能：\n"
         "1️⃣ 股票監控 — 輸入『說明 1』了解詳情\n"
-        "2️⃣ 盤前分析 — 輸入『說明 2』了解詳情\n"
-        "3️⃣ 盤後分析 — 輸入『說明 3』了解詳情\n"
-        "4️⃣ 選股推薦 — 輸入『說明 4』了解詳情\n"
-        "5️⃣ ETF 推薦 — 輸入『說明 5』了解詳情\n\n"
+        "2️⃣ 單檔分析 — 輸入『說明 2』了解詳情\n"
+        "3️⃣ AI 選股 — 輸入『說明 3』了解詳情\n"
+        "4️⃣ ETF 推薦 — 輸入『說明 4』了解詳情\n\n"
         "🛠️ 常用指令：\n"
         "『狀態』— 查看監控清單\n"
         "『刪除 [數字]』— 移除監控股票"
@@ -332,7 +326,8 @@ def _handle_help(uid, text, line, reply_token):
     detail_helps = {
         "1": (
             "📖 股票監控詳細說明\n\n"
-            "功能：自動監控股票價格，當達到停損或目標價時推播提醒。\n\n"
+            "功能：自動監控股票價格，當達到停損或目標價時推播提醒。\n"
+            "訂閱監控的股票每日 08:40 自動收到盤前分析。\n\n"
             "使用步驟：\n"
             "1. 輸入『1』開始新增監控\n"
             "2. 輸入股票名稱或代號\n"
@@ -343,39 +338,30 @@ def _handle_help(uid, text, line, reply_token):
             "提示：最多可同時監控 3 檔股票"
         ),
         "2": (
-            "📖 盤前分析詳細說明\n\n"
-            "功能：每日 08:30 自動推播股票技術面分析與進場建議。\n\n"
+            "📖 單檔分析詳細說明\n\n"
+            "功能：手動查詢任一股票的技術面分析，包含進出場建議與風險提示。\n\n"
             "使用步驟：\n"
-            "1. 輸入『2』選擇盤前分析\n"
+            "1. 輸入『2』選擇單檔分析\n"
             "2. 輸入要分析的股票名稱或代號\n"
             "3. 系統自動分析並推播結果\n\n"
-            "分析內容：MA20 趨勢、支撐壓力、進場信號"
+            "分析內容：MA20 趨勢、支撐壓力、進出場價位、風險提示"
         ),
         "3": (
-            "📖 盤後分析詳細說明\n\n"
-            "功能：每日 13:35 自動推播股票技術面分析與出場建議。\n\n"
+            "📖 AI 選股詳細說明\n\n"
+            "功能：依你的條件篩選股票，AI 推薦 5 檔並說明理由。\n\n"
             "使用步驟：\n"
-            "1. 輸入『3』選擇盤後分析\n"
-            "2. 輸入要分析的股票名稱或代號\n"
-            "3. 系統自動分析並推播結果\n\n"
-            "分析內容：今日表現、獲利了結點位、風險提示"
-        ),
-        "4": (
-            "📖 選股推薦詳細說明\n\n"
-            "功能：每日掃描全市場，推薦籌碼面 + 技術面優質股票。\n\n"
-            "使用步驟：\n"
-            "1. 輸入『4』選擇選股推薦\n"
+            "1. 輸入『3』選擇AI 選股\n"
             "2. 輸入可用資金\n"
             "3. 選擇持有期間\n"
             "4. 選擇風險偏好\n\n"
             "篩選條件：主力進場、技術面突破、潛在獲利空間\n"
             "⚠️ 此功能為 pro 方案專屬"
         ),
-        "5": (
+        "4": (
             "📖 ETF 推薦詳細說明\n\n"
             "功能：依投資目標篩選適合的 ETF，AI 推薦 3 檔並說明操作策略。\n\n"
             "使用步驟：\n"
-            "1. 輸入『5』選擇 ETF 推薦\n"
+            "1. 輸入『4』選擇 ETF 推薦\n"
             "2. 輸入可用資金\n"
             "3. 選擇投資目標（大盤 / 高股息 / 主題）\n\n"
             "篩選條件：乖離率 < 8%、近30日不跌逾10%、高股息需殖利率 > 3%\n"

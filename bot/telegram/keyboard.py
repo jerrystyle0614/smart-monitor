@@ -7,18 +7,15 @@ from typing import List
 
 def main_menu_keyboard():
     # type: () -> List[List[dict]]
-    """主選單 Inline Keyboard（2-2-1 排列）"""
+    """主選單 Inline Keyboard（2-2 排列）"""
     return [
         [
             {"text": "1️⃣ 股票監控", "callback_data": "1"},
-            {"text": "2️⃣ 盤前分析", "callback_data": "2"},
+            {"text": "2️⃣ 單檔分析", "callback_data": "2"},
         ],
         [
-            {"text": "3️⃣ 盤後分析", "callback_data": "3"},
-            {"text": "4️⃣ 選股推薦", "callback_data": "4"},
-        ],
-        [
-            {"text": "5️⃣ ETF 推薦", "callback_data": "5"},
+            {"text": "3️⃣ AI 選股", "callback_data": "3"},
+            {"text": "4️⃣ ETF 推薦", "callback_data": "4"},
         ],
         [
             {"text": "📋 查看監控", "callback_data": "狀態"},

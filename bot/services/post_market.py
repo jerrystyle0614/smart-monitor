@@ -1,5 +1,5 @@
 """
-post_market.py — 盤後分析服務
+post_market.py — 單檔分析服務
 單步問答：選股票 → 立即執行分析並推播
 """
 
@@ -19,14 +19,14 @@ def push_to_line(uid, message, line):
 
 
 class PostMarketService(ScriptedService):
-    """盤後分析服務"""
+    """單檔分析服務"""
 
     def __init__(self):
         self.name = "post_market"
         self.steps = [
             Step(
                 field="stock_id",
-                question="請問要分析哪支股票？（輸入名稱或代號）",
+                question="請問要查詢哪支股票？（輸入名稱或代號）",
                 validate=self._validate_stock,
                 optional=False,
             ),
@@ -50,7 +50,7 @@ class PostMarketService(ScriptedService):
         stock_id = stock_info.get("stock_id") if isinstance(stock_info, dict) else stock_info
         stock_name = stock_info.get("stock_name", "") if isinstance(stock_info, dict) else ""
 
-        line.reply(reply_token, "⏳ 正在進行盤後分析，請稍候...")
+        line.reply(reply_token, "⏳ 正在進行單檔分析，請稍候...")
 
         try:
             # 清除盤前快取，確保用最新的 K 線資料
@@ -148,7 +148,7 @@ class PostMarketService(ScriptedService):
         將分析結果格式化為易讀的 LINE 訊息（盤後/明日展望版本）。
         回傳格式化的訊息字串。
         """
-        msg_parts = [f"📊 盤後分析 - {stock_name} ({stock_id})"]
+        msg_parts = [f"📊 單檔分析 - {stock_name} ({stock_id})"]
         msg_parts.append(f"今日收盤價：{current_price:.2f} 元")
         msg_parts.append("")
 
@@ -187,10 +187,10 @@ class PostMarketService(ScriptedService):
             if isinstance(entry_exit, dict):
                 entry_price = entry_exit.get("entry_price")
                 if entry_price:
-                    msg_parts.append(f"- 建議監控價：{entry_price}")
+                    msg_parts.append(f"- 建議進場價：{entry_price}")
                 stop_loss = entry_exit.get("stop_loss")
                 if stop_loss:
-                    msg_parts.append(f"- 建議監控點（低）：{stop_loss}")
+                    msg_parts.append(f"- 低於 {stop_loss} 元，考慮停損")
                 targets = entry_exit.get("exit_targets")
                 if targets:
                     if isinstance(targets, dict):
