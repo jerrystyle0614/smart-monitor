@@ -3,7 +3,7 @@
 # 重開機後執行一次即可，關閉 terminal 也不影響運行
 # 停止：kill $(cat .tunnel.pid) $(cat .server.pid)
 cd "$(dirname "$0")"
-source .env
+set -a; source .env; set +a
 export PYTHONUNBUFFERED=1
 
 # ── 清掉舊的 process ──────────────────────────────────────────
