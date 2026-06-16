@@ -234,6 +234,13 @@ def _handle_stock_confirm(uid, text, store, line, reply_token):
 def _show_menu(uid, store, line, reply_token):
     # type: (str, object, object, str) -> None
     """顯示主菜單"""
+    # Telegram：直接用 send_menu() 顯示純按鈕介面
+    if hasattr(line, "_post"):
+        parts = reply_token.split(":")
+        chat_id = parts[2] if parts[0] == "cbq" else parts[1]
+        line.send_menu(chat_id)
+        return
+
     plan = store.get_plan(uid)
 
     menu = (
