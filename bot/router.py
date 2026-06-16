@@ -640,6 +640,7 @@ def _handle_delete(uid, text, store, line, reply_token):
         store.remove_stock(uid, stock_index)
 
         line.reply(reply_token, "✅ 已刪除監控：{}（{}）".format(stock_name, stock_id))
+        _show_menu(uid, store, line, reply_token)
 
     except ValueError:
         line.reply(reply_token, "❌ 請輸入有效的數字。例如：刪除 1")
