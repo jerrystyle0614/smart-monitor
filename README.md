@@ -205,6 +205,24 @@ python3 -m pytest tests/ -q
 
 ---
 
+## 常用指令
+
+```bash
+# 啟動服務
+./start_bot.sh
+
+# 查看 server log（即時）
+tail -f log/server.log
+
+# 查看 Cloudflare Tunnel log
+tail -f log/tunnel.log
+
+# 停止服務
+kill $(cat .server.pid) $(cat .tunnel.pid)
+```
+
+---
+
 ## 環境監控
 
 - Server 崩潰自動重啟：launchd `KeepAlive=true`，`ThrottleInterval=10s`
