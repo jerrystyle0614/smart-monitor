@@ -20,6 +20,9 @@ def main_menu_keyboard():
         [
             {"text": "5️⃣ ETF 推薦", "callback_data": "5"},
         ],
+        [
+            {"text": "📋 查看監控", "callback_data": "狀態"},
+        ],
     ]
 
 
