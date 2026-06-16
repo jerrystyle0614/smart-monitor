@@ -11,7 +11,7 @@
 | 功能 | 說明 | 方案 |
 |------|------|------|
 | 股票監控 | 設定停損/目標價，達到條件即時推播 | Free+ |
-| 盤前分析 | 每日 08:50 推播技術面分析與進場建議 | Basic+ |
+| 盤前分析 | 每日 08:40 推播技術面分析與進場建議 | Basic+ |
 | 盤後分析 | 每日 13:35 推播技術面分析與出場建議 | Basic+ |
 | 選股推薦 | 手動觸發，AI 從市場篩選 5 檔並說明 | Pro |
 | ETF 推薦 | 手動觸發，依投資目標篩選 ETF | Pro |
@@ -99,6 +99,8 @@ smart-monitor/
 | 一般問答步驟 | ❌ 取消 |
 | 可選步驟（如停損價） | ⏭ 跳過 ＋ ❌ 取消 |
 | 確認監控條件 | ✅ 確認 ＋ ❌ 取消 |
+| 監控清單 | 🗑 刪除（每支一顆） |
+| 分析結果結尾 | 1️⃣–5️⃣ 回主選單 |
 
 ---
 
@@ -153,7 +155,13 @@ FORCE_TRADING_HOURS=1   # 強制視為交易時段
 # 開發模式
 python3 -m uvicorn bot.server:app --port 8000 --reload
 
-# 生產環境（launchd 自動管理）
+# 一鍵啟動（Cloudflare Tunnel + Server，含 pid 管理）
+./start_bot.sh
+
+# 僅啟動 webhook server（launchd 環境用）
+./start_server.sh
+
+# 生產環境（launchd 自動管理，崩潰後 10 秒重啟）
 launchctl load ~/Library/LaunchAgents/com.smartmonitor.bot.plist
 ```
 
@@ -170,7 +178,7 @@ python3 set_invite.py --plan pro --count 1
 
 | 任務 | 時間（UTC+8） | 說明 |
 |------|--------------|------|
-| 盤前分析推播 | 08:50 | 對所有監控使用者推播盤前分析 |
+| 盤前分析推播 | 08:40 | 對所有監控使用者推播盤前分析 |
 | 盤後分析推播 | 13:35 | 對所有監控使用者推播盤後分析 |
 
 > 歷史日K 全面改用 **yfinance** 抓取，Fugle API 僅保留即時報價，避免 429 限流。
@@ -201,7 +209,8 @@ python3 -m pytest tests/ -q
 
 - Server 崩潰自動重啟：launchd `KeepAlive=true`，`ThrottleInterval=10s`
 - 500 錯誤：自動推播 stack trace 到 Discord Error 頻道
-- Log：`/tmp/smartmonitor-bot.log` / `/tmp/smartmonitor-bot-err.log`
+- Log：`log/server.log`（uvicorn）、`log/tunnel.log`（Cloudflare）
+- 分析推播去重：`log/analysis_fired.json` 跨 process file lock，防止重複推播
 
 ---
 
@@ -224,6 +233,17 @@ users/
 ---
 
 ## Changelog
+
+### 2026-06-12 — 穩定性與 UX 優化
+- 盤前推播時間調整：08:50 → 08:40
+- 分析觸發窗口從 ±2 分鐘擴大為 0~+15 分鐘，server 重啟後仍可補推
+- 分析去重機制：`log/analysis_fired.json` file lock，防止多 process 重複推播
+- Telegram 按鈕點擊即時回應：callback query 在背景執行，webhook 立即回傳
+- Telegram 按鈕點擊後自動隱藏 keyboard（`editMessageReplyMarkup`）
+- 監控清單新增刪除按鈕（每支股票一顆，Telegram 專用）
+- ETF 推薦並行抓取 yfinance 資料，速度提升 3-4 倍
+- 分析結果結尾附上主選單按鈕（Telegram）/ 回主選單提示（LINE）
+- 新增 `start_server.sh`、`start_bot.sh` 啟動腳本
 
 ### 2026-06-11 — Telegram Bot 整合
 - 新增 `bot/telegram/` 模組：TelegramClient、Inline Keyboard、webhook、邀請碼
