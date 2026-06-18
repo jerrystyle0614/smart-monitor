@@ -23,7 +23,7 @@ class AnalysisEngine:
 
     def __init__(self, use_cache: bool = True):
         self.client = Anthropic()
-        self.model = "claude-sonnet-4-5"
+        self.model = "claude-haiku-4-5"
         self.cache = AnalysisCache() if use_cache else None
 
     def analyze_pre_market(
@@ -68,7 +68,7 @@ class AnalysisEngine:
             entry_exit = {}
 
         # 風險提示
-        risks = self._analyze_risks(technical, entry_exit)
+        risks = self._analyze_risks(stock_id, stock_name, technical, entry_exit)
         if not risks:
             risks = {}
 
@@ -118,7 +118,7 @@ class AnalysisEngine:
             entry_exit = {}
 
         # 風險提示
-        risks = self._analyze_risks(technical, entry_exit)
+        risks = self._analyze_risks(stock_id, stock_name, technical, entry_exit)
         if not risks:
             risks = {}
 
@@ -226,13 +226,15 @@ class AnalysisEngine:
 
     def _analyze_risks(
         self,
+        stock_id: str,
+        stock_name: str,
         technical: Dict[str, Any],
         entry_exit: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """風險提示"""
         prompt = RISK_ALERT_PROMPT.format(
-            stock_name="股票",
-            stock_id="XXXX",
+            stock_name=stock_name,
+            stock_id=stock_id,
             technical_analysis=json.dumps(technical, ensure_ascii=False),
             entry_exit_analysis=json.dumps(entry_exit, ensure_ascii=False),
         )

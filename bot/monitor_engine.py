@@ -290,6 +290,14 @@ class MonitorEngine:
                         )
                     candle_data = "\n".join(lines)
 
+                    try:
+                        from bot.data.institutional_client import get_institutional_data, format_institutional
+                        inst_data = get_institutional_data(stock_id, days=5)
+                        institutional_text = format_institutional(inst_data)
+                    except Exception as _ie:
+                        print(f"[monitor] {stock_id} 籌碼面取得失敗：{_ie}", flush=True)
+                        institutional_text = ""
+
                     if is_premarket:
                         result = engine.analyze_pre_market(
                             stock_id=stock_id,
@@ -297,6 +305,7 @@ class MonitorEngine:
                             candle_data=candle_data,
                             current_price=current_price,
                             market_context_text=market_context_text,
+                            institutional_text=institutional_text,
                         )
                     else:
                         result = engine.analyze_post_market(
@@ -304,6 +313,7 @@ class MonitorEngine:
                             stock_name=stock_name,
                             candle_data=candle_data,
                             current_price=current_price,
+                            institutional_text=institutional_text,
                         )
 
                     if not result:
@@ -351,6 +361,18 @@ class MonitorEngine:
             r = technical.get("resistance")
             if r:
                 parts.append(f"- 壓力：{r}")
+            pat = technical.get("pattern")
+            if pat:
+                parts.append(f"- 形態：{pat}")
+            vs = technical.get("volume_signal")
+            if vs:
+                parts.append(f"- 量能訊號：{vs}")
+            ins = technical.get("institutional_signal")
+            if ins:
+                parts.append(f"- 籌碼訊號：{ins}")
+            cbd = technical.get("consecutive_buy_days")
+            if cbd is not None and cbd != 0:
+                parts.append(f"- 連續買超：{cbd} 日")
             mi = technical.get("market_impact")
             if mi:
                 parts.append(f"- 市場連動：{mi}")
@@ -367,8 +389,14 @@ class MonitorEngine:
             section = "💡 進出場建議" if mode_label == "盤前" else "🌅 明日展望"
             parts.append(section)
             ep = entry_exit.get("entry_price")
-            if ep:
-                parts.append(f"- 建議進場價：{ep}")
+            if ep is not None:
+                if isinstance(ep, dict):
+                    # Claude 回傳多情境價位時，取 moderate 或第一個值
+                    ep_val = ep.get("moderate") or ep.get("primary") or ep.get("conservative") or next(iter(ep.values()), None)
+                    if ep_val is not None:
+                        parts.append(f"- 建議進場價：{ep_val}")
+                else:
+                    parts.append(f"- 建議進場價：{ep}")
             sl = entry_exit.get("stop_loss")
             if sl:
                 parts.append(f"- 低於 {sl} 元，考慮停損")
@@ -380,6 +408,12 @@ class MonitorEngine:
             rl = entry_exit.get("risk_level")
             if rl:
                 parts.append(f"- 風險等級：{rl}")
+            st = entry_exit.get("suitable_today")
+            if st is not None:
+                parts.append(f"- 今日適合操作：{'✅ 是' if st else '❌ 否'}")
+            wp = entry_exit.get("watch_points")
+            if wp:
+                parts.append(f"- 注意：{wp}")
             parts.append("")
 
         parts.append("⚠️ 本分析僅供參考，投資決策應自負其責")

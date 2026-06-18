@@ -186,8 +186,13 @@ class PostMarketService(ScriptedService):
             msg_parts.append("🌅 明日展望")
             if isinstance(entry_exit, dict):
                 entry_price = entry_exit.get("entry_price")
-                if entry_price:
-                    msg_parts.append(f"- 建議進場價：{entry_price}")
+                if entry_price is not None:
+                    if isinstance(entry_price, dict):
+                        ep_val = entry_price.get("moderate") or entry_price.get("primary") or entry_price.get("conservative") or next(iter(entry_price.values()), None)
+                        if ep_val is not None:
+                            msg_parts.append(f"- 建議進場價：{ep_val}")
+                    else:
+                        msg_parts.append(f"- 建議進場價：{entry_price}")
                 stop_loss = entry_exit.get("stop_loss")
                 if stop_loss:
                     msg_parts.append(f"- 低於 {stop_loss} 元，考慮停損")
