@@ -1,8 +1,8 @@
 """test_telegram_keyboard.py — Telegram Inline Keyboard 單元測試"""
 
 
-def test_main_menu_keyboard_has_5_services():
-    """主選單應有 5 個服務按鈕"""
+def test_main_menu_keyboard_has_5_buttons():
+    """主選單應有 5 個按鈕（4 服務 + 查看監控）"""
     from bot.telegram.keyboard import main_menu_keyboard
     kb = main_menu_keyboard()
     buttons = [btn for row in kb for btn in row]
@@ -10,11 +10,11 @@ def test_main_menu_keyboard_has_5_services():
 
 
 def test_main_menu_keyboard_callback_data():
-    """每個按鈕的 callback_data 應對應 1-5"""
+    """每個按鈕的 callback_data 應包含 1-4 及狀態"""
     from bot.telegram.keyboard import main_menu_keyboard
     kb = main_menu_keyboard()
     datas = [btn["callback_data"] for row in kb for btn in row]
-    assert set(datas) == {"1", "2", "3", "4", "5"}
+    assert set(datas) == {"1", "2", "3", "4", "狀態"}
 
 
 def test_cancel_keyboard_has_one_button():

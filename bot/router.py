@@ -233,7 +233,12 @@ def _show_menu(uid, store, line, reply_token):
     # Telegram：直接用 send_menu() 顯示純按鈕介面
     if hasattr(line, "_post"):
         parts = reply_token.split(":")
-        chat_id = parts[2] if parts[0] == "cbq" else parts[1]
+        if parts[0] == "cbq" and len(parts) >= 3:
+            chat_id = parts[2]
+        elif len(parts) >= 2:
+            chat_id = parts[1]
+        else:
+            chat_id = uid
         line.send_menu(chat_id)
         return
 

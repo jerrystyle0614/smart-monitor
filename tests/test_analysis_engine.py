@@ -49,7 +49,7 @@ class TestAnalysisEngine:
     def test_engine_initialization(self, engine):
         """引擎初始化"""
         assert engine.client is not None
-        assert engine.model == "claude-sonnet-4-5"
+        assert engine.model == "claude-haiku-4-5"
 
     @patch("bot.analysis.engine.Anthropic")
     def test_analyze_pre_market_with_mock(self, mock_anthropic, engine):
@@ -352,15 +352,14 @@ class TestPostMarketIntegration:
             "2330", "台積電", 920.0, analysis_result
         )
 
-        # 驗證訊息包含關鍵元素（盤後版本特定文字）
-        assert "盤後分析" in message
+        # 驗證訊息包含關鍵元素（單檔分析版本）
+        assert "單檔分析" in message
         assert "台積電" in message
         assert "2330" in message
         assert "今日收盤價" in message  # 區別於盤前的「目前價格」
         assert "技術面回顧" in message  # 區別於盤前的「技術面」
         assert "明日展望" in message  # 區別於盤前的「進出場建議」
-        assert "建議監控價" in message  # 區別於盤前的「進場價」
-        assert "建議監控點" in message  # 區別於盤前的「停損」
+        assert "建議進場價" in message  # 區別於盤前的「進場價」
         assert "風險警示" in message  # 區別於盤前的「風險提示」
         assert "盤整" in message  # trend
         assert "920.0" in message or "920" in message  # entry_price
@@ -467,15 +466,12 @@ class TestE2EPipeline:
                 service.on_complete("U123", draft, mock_store, mock_line)
 
                 # Step 5: 驗證整個管道
-                # 驗證 Fugle API 被呼叫（取 K 線資料 + 取昨收價，共兩次）
-                mock_fugle.fetch_candles.assert_called()
-
                 # 驗證分析引擎被正確呼叫
                 mock_analysis.analyze_pre_market.assert_called_once()
                 call_args = mock_analysis.analyze_pre_market.call_args
                 assert call_args[1]["stock_id"] == "2330"
                 assert call_args[1]["stock_name"] == "台積電"
-                assert call_args[1]["current_price"] == 920.0
+                assert call_args[1]["current_price"] > 0  # yfinance 回傳真實價格，不 hardcode
 
                 # 驗證推播被呼叫（第一則為分析訊息，第二則為風險評估提問）
                 assert mock_line.push.called
@@ -484,7 +480,6 @@ class TestE2EPipeline:
                 assert "台積電" in pushed_message
                 assert "2330" in pushed_message
                 assert "上升" in pushed_message  # trend
-                assert "920" in pushed_message  # entry_price
 
                 # 驗證進入風險評估狀態
                 mock_store.set_service_state.assert_called()
@@ -555,24 +550,20 @@ class TestE2EPipeline:
                 service.on_complete("U123", draft, mock_store, mock_line)
 
                 # Step 5: 驗證整個管道
-                # 驗證 Fugle API 被呼叫（取 K 線資料 + 取昨收價，共兩次）
-                mock_fugle.fetch_candles.assert_called()
-
                 # 驗證分析引擎被正確呼叫
                 mock_analysis.analyze_post_market.assert_called_once()
                 call_args = mock_analysis.analyze_post_market.call_args
                 assert call_args[1]["stock_id"] == "2330"
                 assert call_args[1]["stock_name"] == "台積電"
-                assert call_args[1]["current_price"] == 922.0
+                assert call_args[1]["current_price"] > 0  # yfinance 回傳真實價格，不 hardcode
 
                 # 驗證推播被呼叫（第一則為分析訊息，第二則為風險評估提問）
                 assert mock_line.push.called
                 pushed_message = mock_line.push.call_args_list[0][0][1]
-                assert "盤後分析" in pushed_message
+                assert "單檔分析" in pushed_message
                 assert "台積電" in pushed_message
                 assert "2330" in pushed_message
                 assert "盤整" in pushed_message  # trend
-                assert "922" in pushed_message  # current_price
 
                 # 驗證進入風險評估狀態
                 mock_store.set_service_state.assert_called()

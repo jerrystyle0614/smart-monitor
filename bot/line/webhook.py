@@ -40,12 +40,8 @@ def register(app, store, line_client):
 
     @app.post("/webhook")
     async def webhook(request: Request):
-        """接收 LINE 平台 webhook 事件，驗證簽章後分發給各 handler"""
-        signature = request.headers.get("X-Line-Signature", "")
-        body = await request.body()
-
-        if not _verify_signature(body, signature):
-            raise HTTPException(status_code=400, detail="Invalid signature")
+        """LINE Bot 目前已停用，僅回傳 200 避免 LINE 平台 retry"""
+        return {"status": "ok"}
 
         payload = json.loads(body)
         for event in payload.get("events", []):

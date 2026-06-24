@@ -225,15 +225,19 @@ class MonitorEngine:
 
     def _run_analysis_all(self, mode) -> None:
         """對所有平台的 MONITORING 使用者執行分析並推播"""
+        discord_sent = set()  # 跨平台 Discord 去重：同一支股票只推一次
         for platform, store in self._stores.items():
             client = self._get_client(platform)
-            self._run_analysis_for_store(store, client, mode)
+            self._run_analysis_for_store(store, client, mode, discord_sent)
 
-    def _run_analysis_for_store(self, store, client, mode) -> None:
+    def _run_analysis_for_store(self, store, client, mode, discord_sent=None) -> None:
         """對指定 store 的所有 MONITORING 使用者執行分析並推播"""
         from bot.analysis_runner import AnalysisMode
         from bot.analysis.engine import AnalysisEngine
         from bot.data.market_context import fetch_market_context, format_market_context
+
+        if discord_sent is None:
+            discord_sent = set()
 
         users = store.get_all_monitoring_users()
         if not users:
@@ -326,11 +330,13 @@ class MonitorEngine:
                         market_context_text=market_context_text if is_premarket else "",
                     )
                     client.push(uid, message)
-                    self._discord.send(
-                        f"{mode_label}分析 - {stock_name}({stock_id})",
-                        message,
-                        0x3498DB if is_premarket else 0x9B59B6,
-                    )
+                    if stock_id not in discord_sent:
+                        discord_sent.add(stock_id)
+                        self._discord.send(
+                            f"{mode_label}分析 - {stock_name}({stock_id})",
+                            message,
+                            0x3498DB if is_premarket else 0x9B59B6,
+                        )
 
                 except Exception as e:
                     import traceback

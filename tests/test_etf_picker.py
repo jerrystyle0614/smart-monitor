@@ -119,7 +119,7 @@ class TestETFPickerRouter:
         assert "pro" in SERVICE_PERMISSIONS["etf_picker"]
         assert "free" not in SERVICE_PERMISSIONS["etf_picker"]
 
-    def test_menu_choice_5_starts_etf_picker(self):
+    def test_menu_choice_4_starts_etf_picker(self):
         from bot.router import handle_message
         mock_store = MagicMock()
         mock_store.check_cooldown.return_value = False
@@ -128,5 +128,5 @@ class TestETFPickerRouter:
         mock_line = MagicMock()
 
         with patch("bot.services.etf_picker.ETFPickerService.start") as mock_start:
-            handle_message("uid_test", "5", mock_store, mock_line, "reply_token")
+            handle_message("uid_test", "4", mock_store, mock_line, "reply_token")
             mock_start.assert_called_once()

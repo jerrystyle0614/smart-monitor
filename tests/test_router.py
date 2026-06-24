@@ -74,9 +74,10 @@ def test_handle_message_menu_selection_1(mock_store, mock_line):
 
 
 def test_service_permissions_structure():
-    """權限表應包含三個服務"""
+    """權限表應包含核心服務"""
     assert "stock_monitor" in SERVICE_PERMISSIONS
-    assert "pre_market" in SERVICE_PERMISSIONS
     assert "post_market" in SERVICE_PERMISSIONS
+    assert "stock_picker" in SERVICE_PERMISSIONS
+    assert "etf_picker" in SERVICE_PERMISSIONS
     assert "free" in SERVICE_PERMISSIONS["stock_monitor"]
-    assert "free" not in SERVICE_PERMISSIONS["pre_market"]
+    assert "free" not in SERVICE_PERMISSIONS["post_market"]
