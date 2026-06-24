@@ -135,7 +135,7 @@ def _fetch_etf_data(stock_id: str) -> Optional[Dict]:
         div_yield = annual_div / close * 100 if close > 0 else 0.0
 
         return {
-            "close": close,
+            "close": round(close, 2),
             "ma20": round(ma20, 2),
             "avg_vol_20": round(avg_vol_20, 0),
             "ret_30": round(ret_30, 2),
@@ -294,7 +294,7 @@ def _send_result(uid: str, ai_result: Dict, capital: float,
         lot_hint = f"✅ 可買整張（{one_lot_cost:,} 元）" if can_buy_lot else f"⚠️ 資金不足買整張（需 {one_lot_cost:,} 元），建議零股"
 
         msg += f"{'①②③'[i-1]} {sname}（{sid}）\n"
-        msg += f"   收盤：{close} 元｜殖利率：{div_yield:.1f}%\n"
+        msg += f"   收盤：{close:.2f} 元｜殖利率：{div_yield:.1f}%\n"
         msg += f"   近30日：{ret_30:+.1f}%\n"
         msg += f"   {lot_hint}\n"
         msg += f"   📌 操作：{strategy}\n"
