@@ -275,7 +275,7 @@ def _show_watchlist(uid, store, line, reply_token):
         line.reply(reply_token, "📊 你還沒有監控任何股票。\n輸入『1』開始新增。")
         return
 
-    msg = "📊 你的監控清單（{}/3）\n\n".format(len(watchlist))
+    msg = "📊 你的監控清單（{}/10）\n\n".format(len(watchlist))
     for i, stock in enumerate(watchlist, 1):
         stock_id = stock.get("stock_id", "")
         stock_name = stock.get("stock_name", "")
@@ -340,7 +340,7 @@ def _handle_help(uid, text, line, reply_token):
             "4. 輸入買入均價\n"
             "5. 輸入停損價（可選，輸入『跳過』略過）\n"
             "6. 輸入『確認』完成設定\n\n"
-            "提示：最多可同時監控 3 檔股票"
+            "提示：最多可同時監控 10 檔股票"
         ),
         "2": (
             "📖 單檔分析詳細說明\n\n"

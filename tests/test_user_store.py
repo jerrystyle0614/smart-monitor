@@ -74,10 +74,10 @@ def test_add_stock_encrypts_sensitive_fields(store):
     assert wl[0]["cost_price"] == "900.0"
 
 
-def test_add_stock_max_3_limit(store):
-    """超過 3 支應拋出異常"""
+def test_add_stock_max_10_limit(store):
+    """超過 10 支應拋出異常"""
     uid = "U999"
-    for i in range(3):
+    for i in range(10):
         store.add_stock(uid, {
             "stock_id": str(2330 + i),
             "stock_name": "Stock{}".format(i),

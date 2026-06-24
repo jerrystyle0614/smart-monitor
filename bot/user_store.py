@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any
 from bot.crypto import encrypt_fields, decrypt_fields
 
 
-MAX_STOCKS = 3
+MAX_STOCKS = 10
 SENSITIVE_FIELDS = ["total_shares", "cost_price", "stop_loss_moving", "target_stage_1"]
 COOLDOWN_DURATION = 60   # 冷卻時長（秒）
 COOLDOWN_WINDOW = 30     # 計算視窗（秒）
