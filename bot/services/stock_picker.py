@@ -334,8 +334,7 @@ class StockPickerService(ScriptedService):
                 question=(
                     "💰 選股推薦｜步驟 1／3\n\n"
                     "你目前有多少資金可以投入？（元）\n"
-                    "例如：50000\n\n"
-                    "（輸入『取消』回到主選單）"
+                    "例如：50000"
                 ),
                 validate=self._validate_capital,
                 optional=False,
