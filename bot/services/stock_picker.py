@@ -247,7 +247,8 @@ def _ai_pick(capital: float, period: str, risk: str,
             f"同時判斷整體策略名稱（例如：穩健波段型、高息防禦型、動能突破型等）\n\n"
             f"每檔股票請提供：\n"
             f"- stop_loss：依風險承受度計算停損價（保守 -5%、穩健 -10%、積極 -15%），取整數\n"
-            f"- entry_signal：描述進場觸發條件（1句），例如「MA5 站上 MA20 且成交量放大 1.5 倍」\n\n"
+            f"- entry_signal：描述進場觸發條件（1句），例如「MA5 站上 MA20 且成交量放大 1.5 倍」\n"
+            f"- reason 不要提及可買幾張，只描述技術面與籌碼面理由\n\n"
             f"回覆 JSON，不要其他文字：\n"
             f'{{"strategy_name": "策略名稱",'
             f'"strategy_desc": "策略說明（1句）",'
@@ -463,8 +464,8 @@ def _send_result(uid: str, ai_result: Dict, capital: float,
         stock_id = stock.get("stock_id", "")
         stock_name = stock.get("stock_name", "")
         close = stock.get("close", 0)
-        can_buy_lot = stock.get("can_buy_lot", False)
-        one_lot_cost = int(close * 1000)  # 重新計算，不用 AI 回傳值（AI 常算錯）
+        one_lot_cost = int(close * 1000)
+        can_buy_lot = capital >= one_lot_cost  # 不信任 AI 回傳值，自行計算
         reason = stock.get("reason", "")
 
         emoji = number_emojis[i] if i < len(number_emojis) else f"{i+1}."
