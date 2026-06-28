@@ -81,19 +81,19 @@ def register(app, store, tg_client):
             reply_token = "cbq:{}:{}".format(query_id, chat_id)
             logger.info("[telegram] callback chat_id={} data={!r}".format(chat_id, data))
 
-            def _handle_callback():
-                # 消除按鈕 loading + 隱藏被點擊的 keyboard
-                tg_client._post("answerCallbackQuery", {"callback_query_id": query_id})
-                if message_id:
-                    tg_client._post("editMessageReplyMarkup", {
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "reply_markup": {"inline_keyboard": []},
-                    })
-                handle_message(chat_id, data, store, tg_client, reply_token)
+            # 立即消除按鈕 loading（不進背景，讓用戶馬上感受到反饋）
+            tg_client._post("answerCallbackQuery", {"callback_query_id": query_id})
 
             loop = asyncio.get_event_loop()
-            loop.run_in_executor(None, _handle_callback)
+
+            # 隱藏鍵盤 和 handle_message 並行執行，互不等待
+            if message_id:
+                loop.run_in_executor(None, tg_client._post, "editMessageReplyMarkup", {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "reply_markup": {"inline_keyboard": []},
+                })
+            loop.run_in_executor(None, handle_message, chat_id, data, store, tg_client, reply_token)
             return {"ok": True}
 
         return {"ok": True}
