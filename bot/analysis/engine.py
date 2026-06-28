@@ -79,8 +79,8 @@ class AnalysisEngine:
             "timestamp": datetime.now().isoformat(),
         }
 
-        # 保存快取
-        if self.cache:
+        # 只有 risks 非空才存快取，避免 API 失敗的空結果被快取
+        if self.cache and risks:
             self.cache.set(stock_id, "pre_market", result)
 
         return result
@@ -129,8 +129,8 @@ class AnalysisEngine:
             "timestamp": datetime.now().isoformat(),
         }
 
-        # 保存快取
-        if self.cache:
+        # 只有 risks 非空才存快取，避免 API 失敗的空結果被快取
+        if self.cache and risks:
             self.cache.set(stock_id, "post_market", result)
 
         return result
@@ -242,7 +242,7 @@ class AnalysisEngine:
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=800,
+                max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )
 
@@ -254,9 +254,12 @@ class AnalysisEngine:
                 if start >= 0 and end > start:
                     json_str = response_text[start:end]
                     return json.loads(json_str)
-            except Exception:
-                return {"warnings": response_text}
+                print(f"[analysis] {stock_id} risks 無法找到 JSON 區塊", flush=True)
+                return None
+            except Exception as e:
+                print(f"[analysis] {stock_id} risks JSON 解析失敗：{e}", flush=True)
+                return None
 
         except Exception as e:
-            print(f"[analysis] 風險提示失敗：{e}")
+            print(f"[analysis] {stock_id} 風險提示 API 失敗：{e}", flush=True)
             return None
