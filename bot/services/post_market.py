@@ -239,25 +239,21 @@ class PostMarketService(ScriptedService):
 
         # 風險提示
         risks = analysis.get("risks", {})
-        if risks:
-            msg_parts.append("⚠️ 風險警示")
-            if isinstance(risks, dict):
-                tech_risks = risks.get("technical_risks", [])
-                if tech_risks:
-                    for risk in tech_risks:
-                        msg_parts.append(f"- 技術風險：{risk}")
-                op_risks = risks.get("operation_risks", [])
-                if op_risks:
-                    for risk in op_risks:
-                        msg_parts.append(f"- 操作風險：{risk}")
-                market_risks = risks.get("market_risks", [])
-                if market_risks:
-                    for risk in market_risks:
-                        msg_parts.append(f"- 市場風險：{risk}")
-                caution = risks.get("overall_caution_level")
-                if caution:
-                    msg_parts.append(f"- 整體警示等級：{caution}")
-            msg_parts.append("")
+        if risks and isinstance(risks, dict):
+            risk_lines = []
+            for risk in risks.get("technical_risks", []):
+                risk_lines.append(f"- 技術風險：{risk}")
+            for risk in risks.get("operation_risks", []):
+                risk_lines.append(f"- 操作風險：{risk}")
+            for risk in risks.get("market_risks", []):
+                risk_lines.append(f"- 市場風險：{risk}")
+            caution = risks.get("overall_caution_level")
+            if caution:
+                risk_lines.append(f"- 整體警示等級：{caution}")
+            if risk_lines:
+                msg_parts.append("⚠️ 風險警示")
+                msg_parts.extend(risk_lines)
+                msg_parts.append("")
 
         msg_parts.append("⚠️ 本分析僅供參考，投資決策應自負其責")
 
