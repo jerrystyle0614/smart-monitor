@@ -252,8 +252,18 @@ class AnalysisEngine:
                 start = response_text.find("{")
                 end = response_text.rfind("}") + 1
                 if start >= 0 and end > start:
-                    json_str = response_text[start:end]
-                    return json.loads(json_str)
+                    return json.loads(response_text[start:end])
+                # JSON 被截斷：嘗試補上結尾後強制解析
+                if start >= 0:
+                    truncated = response_text[start:].rstrip()
+                    # 補足缺少的 ] 和 }
+                    open_brackets = truncated.count("[") - truncated.count("]")
+                    open_braces = truncated.count("{") - truncated.count("}")
+                    repaired = truncated + "]" * open_brackets + "}" * open_braces
+                    try:
+                        return json.loads(repaired)
+                    except Exception:
+                        pass
                 print(f"[analysis] {stock_id} risks 無法找到 JSON 區塊", flush=True)
                 return None
             except Exception as e:

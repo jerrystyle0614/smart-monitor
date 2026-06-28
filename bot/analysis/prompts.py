@@ -137,16 +137,11 @@ RISK_ALERT_PROMPT = """
 技術分析：{technical_analysis}
 進出場建議：{entry_exit_analysis}
 
-請警示潛在風險（用白話文，避免造成恐慌）：
+請警示潛在風險（白話文，每條限 20 字以內，每類最多 2 條）：
 1. 技術面風險（形態失敗、支撐破位等）
 2. 操作風險（進場時機、資金控管）
 3. 市場風險（交易量不足、流動性問題）
 
-回應格式：JSON
-{{
-  "technical_risks": ["風險 1", "風險 2"],
-  "operation_risks": ["風險 1"],
-  "market_risks": ["風險 1"],
-  "overall_caution_level": "低/中/高"
-}}
+只回應 JSON，不要其他文字：
+{{"technical_risks":["風險1","風險2"],"operation_risks":["風險1"],"market_risks":["風險1"],"overall_caution_level":"低/中/高"}}
 """
