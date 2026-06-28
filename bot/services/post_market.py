@@ -207,8 +207,9 @@ class PostMarketService(ScriptedService):
         if entry_exit:
             msg_parts.append("🌅 明日展望")
             if isinstance(entry_exit, dict):
+                suitable = entry_exit.get("suitable_today")
                 entry_price = entry_exit.get("entry_price")
-                if entry_price is not None:
+                if entry_price is not None and suitable is not False:
                     if isinstance(entry_price, dict):
                         ep_val = entry_price.get("moderate") or entry_price.get("primary") or entry_price.get("conservative") or next(iter(entry_price.values()), None)
                         if ep_val is not None:
@@ -230,7 +231,6 @@ class PostMarketService(ScriptedService):
                 risk_level = entry_exit.get("risk_level")
                 if risk_level:
                     msg_parts.append(f"- 風險等級：{risk_level}")
-                suitable = entry_exit.get("suitable_today")
                 if suitable is not None:
                     msg_parts.append(
                         f"- 明日適合操作：{'✅ 是' if suitable else '❌ 否'}"

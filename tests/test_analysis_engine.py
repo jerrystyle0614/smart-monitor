@@ -359,7 +359,7 @@ class TestPostMarketIntegration:
         assert "今日收盤價" in message  # 區別於盤前的「目前價格」
         assert "技術面回顧" in message  # 區別於盤前的「技術面」
         assert "明日展望" in message  # 區別於盤前的「進出場建議」
-        assert "建議進場價" in message  # 區別於盤前的「進場價」
+        assert "建議進場價" not in message  # suitable_today=False 時不顯示進場價
         assert "風險警示" in message  # 區別於盤前的「風險提示」
         assert "盤整" in message  # trend
         assert "920.0" in message or "920" in message  # entry_price
