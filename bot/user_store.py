@@ -279,6 +279,21 @@ class UserStore:
                 users.append(user_dir.name)
         return users
 
+    def get_all_active_users(self):
+        # type: () -> List[str]
+        """回傳所有 plan 不為 free 的使用者 ID 列表"""
+        users = []
+        users_path = Path(self.data_dir)
+        if not users_path.exists():
+            return users
+        for user_dir in users_path.iterdir():
+            if not user_dir.is_dir():
+                continue
+            plan = self.get_plan(user_dir.name)
+            if plan and plan != "free":
+                users.append(user_dir.name)
+        return users
+
     # ------------------------------------------------------------------
     # Per-stock alert flags (stored in watchlist.json)
     # ------------------------------------------------------------------
