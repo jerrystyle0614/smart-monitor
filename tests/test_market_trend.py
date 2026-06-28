@@ -40,20 +40,33 @@ class TestFetchMarketData:
         """部分 symbol 失敗時，成功的部分仍回傳"""
         from bot.data.market_trend import fetch_market_data
 
-        call_count = [0]
-        def side_effect(symbol):
-            m = MagicMock()
-            call_count[0] += 1
-            if call_count[0] <= 2:
-                m.history.return_value = _make_hist([100.0, 102.0])
-            else:
-                m.history.side_effect = Exception("fail")
-            return m
+        success_ticker = MagicMock()
+        success_ticker.history.return_value = _make_hist([100.0, 102.0])
 
-        with patch("bot.data.market_trend.yf.Ticker", side_effect=side_effect):
+        fail_ticker = MagicMock()
+        fail_ticker.history.side_effect = Exception("fail")
+
+        # 交替成功/失敗
+        tickers = [success_ticker, fail_ticker, success_ticker, fail_ticker, success_ticker, fail_ticker]
+        ticker_iter = iter(tickers)
+
+        with patch("bot.data.market_trend.yf.Ticker", side_effect=lambda _: next(ticker_iter)):
             result = fetch_market_data()
 
         assert result is not None
+
+    def test_returns_none_when_hist_empty(self):
+        """history 回傳空 DataFrame 時該 symbol 跳過"""
+        from bot.data.market_trend import fetch_market_data
+        import pandas as pd
+
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = pd.DataFrame()  # 空 DataFrame
+
+        with patch("bot.data.market_trend.yf.Ticker", return_value=mock_ticker):
+            result = fetch_market_data()
+
+        assert result is None
 
 
 class TestAnalyzeMarketTrend:
