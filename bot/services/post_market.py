@@ -117,13 +117,24 @@ class PostMarketService(ScriptedService):
         取得最近 20 日 K 線資料並格式化為字串。
         回傳格式化的 K 線資料字串，或 None（失敗）
         """
+        df = None
         try:
             from bot.services.prescan import _fetch_candles_yf
             df = _fetch_candles_yf(stock_id, days=20)
-            if df is None or len(df) == 0:
-                return None
+        except Exception as e:
+            print(f"[post_market] yfinance K線取得失敗，改用 Fugle：{e}")
 
-            # 格式化 DataFrame 為易讀的字串
+        if df is None or len(df) == 0:
+            try:
+                from bot.data.fugle_client import FugleClient
+                df = FugleClient().fetch_candles(stock_id, days=20)
+            except Exception as e:
+                print(f"[post_market] Fugle K線取得也失敗：{e}")
+
+        if df is None or len(df) == 0:
+            return None
+
+        try:
             lines = ["日期\t\t開盤\t\t高\t\t低\t\t收盤\t\t成交量"]
             for _, row in df.iterrows():
                 date_str = str(row.get("date", ""))[:10]
@@ -138,7 +149,7 @@ class PostMarketService(ScriptedService):
                 )
             return "\n".join(lines)
         except Exception as e:
-            print(f"[post_market] 取得 K 線資料失敗：{e}")
+            print(f"[post_market] K線格式化失敗：{e}")
             return None
 
     def _format_analysis_message(

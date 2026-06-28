@@ -96,8 +96,18 @@ def _fetch_candles_for_analysis(stock_id: str, days: int, is_premarket: bool):
         return df
 
     except Exception as e:
-        print(f"[monitor] {stock_id} yfinance K線取得失敗：{e}", flush=True)
-        return None
+        print(f"[monitor] {stock_id} yfinance K線取得失敗，改用 Fugle：{e}", flush=True)
+
+    # Fugle fallback
+    try:
+        from bot.data.fugle_client import FugleClient
+        import pandas as pd
+        df = FugleClient().fetch_candles(stock_id, days=days)
+        if df is not None and not df.empty:
+            return df
+    except Exception as e2:
+        print(f"[monitor] {stock_id} Fugle K線取得也失敗：{e2}", flush=True)
+    return None
 
 
 def fetch_price(stock_id: str):
