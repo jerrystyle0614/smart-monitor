@@ -41,6 +41,13 @@ SCHEDULED_JOBS: List[ScheduledJob] = [
         func=None,
         description="每日 13:40 盤後預掃前 300 大股票建立候選清單"
     ),
+    ScheduledJob(
+        name="market_trend_daily",
+        hour=8,
+        minute=50,
+        func=None,
+        description="每日 08:50 推播大盤走勢預測給所有有效使用者",
+    ),
 ]
 
 # 功能開關

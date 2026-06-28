@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
             user_store=_line_store,
             line_client=_line,
             stock_picker_engine=None,
+            tg_client=_tg,
         )
         scheduler_manager = SchedulerManager()
         scheduler_manager.start(scheduled_jobs)
