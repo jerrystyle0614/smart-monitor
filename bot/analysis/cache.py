@@ -17,6 +17,7 @@ class AnalysisCache:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.ttl = 3600  # 1 小時過期
+        self._evict_expired()
 
     def _get_cache_key(self, stock_id: str, analysis_type: str) -> str:
         """生成快取鍵"""
@@ -67,6 +68,19 @@ class AnalysisCache:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"[cache] 儲存失敗：{e}")
+
+    def _evict_expired(self) -> None:
+        """清除所有過期快取檔案"""
+        try:
+            for path in self.cache_dir.glob("*.json"):
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    if time.time() - data.get("timestamp", 0) > self.ttl:
+                        path.unlink()
+                except Exception:
+                    path.unlink()  # 損壞的檔案直接刪
+        except Exception as e:
+            print(f"[cache] 清理過期快取失敗：{e}")
 
     def delete(self, stock_id: str, analysis_type: str) -> None:
         """刪除快取結果"""
