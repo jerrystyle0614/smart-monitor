@@ -59,7 +59,7 @@ def _fetch_candles_for_analysis(stock_id: str, days: int, is_premarket: bool):
         period = f"{max(days // 20, 2)}mo"
         df = ticker.history(period=period)
         if df is None or df.empty:
-            return None
+            raise ValueError(f"yfinance 無資料：{stock_id}.TW")
 
         df = df.dropna(subset=["Close"])
         df = df.reset_index()
