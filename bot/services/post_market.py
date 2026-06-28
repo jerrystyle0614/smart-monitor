@@ -65,12 +65,23 @@ class PostMarketService(ScriptedService):
             candle_data = self._fetch_candle_data(stock_id)
 
             if candle_data:
-                # 從 K 線資料中提取今日收盤價（最後一筆）
-                from bot.services.prescan import _fetch_candles_yf
-                df = _fetch_candles_yf(stock_id, days=20)
+                # 從 K 線資料中提取今日收盤價（最後一筆），yfinance 失敗則用 Fugle
                 current_price = 0.0
-                if df is not None and len(df) > 0:
-                    current_price = float(df.iloc[-1]["close"])
+                try:
+                    from bot.services.prescan import _fetch_candles_yf
+                    df = _fetch_candles_yf(stock_id, days=20)
+                    if df is not None and len(df) > 0:
+                        current_price = float(df.iloc[-1]["close"])
+                except Exception:
+                    pass
+                if current_price == 0.0:
+                    try:
+                        from bot.data.fugle_client import FugleClient
+                        quote = FugleClient().get_quote(stock_id)
+                        if quote and quote.get("close_price", 0) > 0:
+                            current_price = float(quote["close_price"])
+                    except Exception:
+                        pass
 
                 # 呼叫 AnalysisEngine 進行分析（含籌碼面）
                 analysis_result = self.analysis_engine.analyze_post_market(
