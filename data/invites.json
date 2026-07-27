@@ -1,13 +1,8 @@
 {
-  "SMU3WR": {
-    "plan": "pro",
-    "used": false,
-    "chat_id": null
-  },
   "SM8QL8": {
     "plan": "pro",
     "used": false,
-    "chat_id": null
+    "chat_id": "8822402891"
   },
   "SMAD84": {
     "plan": "pro",
@@ -18,5 +13,20 @@
     "plan": "pro",
     "used": true,
     "chat_id": "8929202061"
+  },
+  "SM8E0X": {
+    "plan": "pro",
+    "used": true,
+    "chat_id": "8782155666"
+  },
+  "SMUAMD": {
+    "plan": "pro",
+    "used": true,
+    "chat_id": "8950403038"
+  },
+  "SMB5IR": {
+    "plan": "pro",
+    "used": false,
+    "chat_id": null
   }
 }

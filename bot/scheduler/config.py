@@ -44,9 +44,9 @@ SCHEDULED_JOBS: List[ScheduledJob] = [
     ScheduledJob(
         name="market_trend_daily",
         hour=8,
-        minute=50,
+        minute=40,
         func=None,
-        description="每日 08:50 推播大盤走勢預測給所有有效使用者",
+        description="每日 08:40 推播大盤走勢預測給所有有效使用者",
     ),
 ]
 

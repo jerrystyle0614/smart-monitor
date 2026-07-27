@@ -14,6 +14,7 @@ class Step:
     question: str                                                   # 問題文字
     validate: Callable[[str], Tuple[bool, Any, str]]                # 驗證函式：(text) -> (ok, value, error_msg)
     optional: bool = False                                          # 是否可輸入「跳過」略過
+    skip_to_end: bool = False                                       # 跳過時直接進確認，不進下一題
 
 
 class ScriptedService:
@@ -47,9 +48,14 @@ class ScriptedService:
         # 檢查「跳過」（選填欄位）
         if text == "跳過":
             if not step.optional:
-                line.reply(reply_token, f"❌ 此欄位必填，無法跳過。{step.question}")
+                line.reply(reply_token, "❌ 此欄位必填，無法跳過。\n\n" + step.question)
                 return "CONTINUE"
             draft[step.field] = None
+            # skip_to_end：跳過此題直接進確認，不繼續下一題
+            if step.skip_to_end:
+                store.set_service_state(uid, self.name, None, draft, None)
+                self.on_complete(uid, draft, store, line, reply_token)
+                return "DONE"
             next_step = current_step + 1
             if next_step >= len(self.steps):
                 store.set_service_state(uid, self.name, None, draft, None)

@@ -23,21 +23,24 @@ class StockMonitorService(ScriptedService):
             ),
             Step(
                 field="total_shares",
-                question="持有幾股？（例如：100）",
+                question="持有幾股？（例如：1000）",
                 validate=self._validate_shares,
-                optional=False,
+                optional=True,
+                skip_to_end=True,
             ),
             Step(
                 field="cost_price",
                 question="買入均價是多少元？",
                 validate=self._validate_price,
-                optional=False,
+                optional=True,
+                skip_to_end=True,
             ),
             Step(
                 field="stop_loss_moving",
-                question="停損價是多少元？（輸入『跳過』略過）",
+                question="停損價是多少元？\n⚠️ 到達停損價時將自動推播提醒",
                 validate=self._validate_price,
                 optional=True,
+                skip_to_end=True,
             ),
         ]
 
@@ -52,14 +55,14 @@ class StockMonitorService(ScriptedService):
 
     def _validate_shares(self, text):
         # type: (str) -> Tuple[bool, Any, str]
-        """驗證股數（正整數）"""
+        """驗證股數（最小 1 股）"""
         try:
             shares = int(text)
             if shares < 1:
-                return False, None, "請輸入正整數，例如：100"
+                return False, None, "請輸入至少 1 股，例如：1000"
             return True, shares, ""
         except ValueError:
-            return False, None, "請輸入正整數，例如：100"
+            return False, None, "請輸入整數，例如：1000"
 
     def _validate_price(self, text):
         # type: (str) -> Tuple[bool, Any, str]
@@ -102,16 +105,16 @@ class StockMonitorService(ScriptedService):
             "📋 確認監控條件\n\n"
             "股票：{}（{}）\n"
             "收盤：{} 元（{:+.2f}%）\n"
-            "持股：{} 股\n"
-            "均價：{} 元\n"
+            "持股：{}\n"
+            "均價：{}\n"
             "停損：{} {}\n\n"
             "輸入「確認」開始監控\n"
             "輸入「取消」重新設定"
         ).format(
             stock_name, stock_id,
             close_price, change_pct,
-            total_shares,
-            cost_price,
+            "{} 股".format(total_shares) if total_shares is not None else "未設定",
+            "{} 元".format(cost_price) if cost_price is not None else "未設定",
             stop_loss or "未設定", stop_pct,
         )
 

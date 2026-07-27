@@ -20,8 +20,8 @@ _TZ_OFFSET    = datetime.timezone(datetime.timedelta(hours=8))
 
 # 每日分析推播的觸發時間（UTC+8）
 _ANALYSIS_TIMES = [
-    datetime.time(8, 40),   # 盤前
-    datetime.time(13, 35),  # 盤後
+    datetime.time(8, 50),   # 盤前（有監控股票的使用者）
+    datetime.time(13, 40),  # 盤後
 ]
 
 
@@ -223,6 +223,8 @@ class MonitorEngine:
         """
         from bot.analysis_runner import AnalysisMode
         now = datetime.datetime.now(_TZ_OFFSET)
+        if now.weekday() >= 5:  # 週六、日不推播
+            return False, None, ""
         now_mins = now.hour * 60 + now.minute
         for t in _ANALYSIS_TIMES:
             fire_key = "{} {}".format(now.strftime('%Y-%m-%d'), t.strftime('%H:%M'))
@@ -238,9 +240,11 @@ class MonitorEngine:
         discord_sent = set()  # 跨平台 Discord 去重：同一支股票只推一次
         for platform, store in self._stores.items():
             client = self._get_client(platform)
-            self._run_analysis_for_store(store, client, mode, discord_sent)
+            # Discord 只跟著 telegram 推播，LINE 已停用故不重複發
+            send_discord = (platform == "telegram")
+            self._run_analysis_for_store(store, client, mode, discord_sent, send_discord=send_discord)
 
-    def _run_analysis_for_store(self, store, client, mode, discord_sent=None) -> None:
+    def _run_analysis_for_store(self, store, client, mode, discord_sent=None, send_discord=True) -> None:
         """對指定 store 的所有 MONITORING 使用者執行分析並推播"""
         from bot.analysis_runner import AnalysisMode
         from bot.analysis.engine import AnalysisEngine
@@ -340,7 +344,7 @@ class MonitorEngine:
                         market_context_text=market_context_text if is_premarket else "",
                     )
                     client.push(uid, message)
-                    if stock_id not in discord_sent:
+                    if send_discord and stock_id not in discord_sent:
                         discord_sent.add(stock_id)
                         self._discord.send(
                             f"{mode_label}分析 - {stock_name}({stock_id})",
@@ -404,8 +408,9 @@ class MonitorEngine:
         if isinstance(entry_exit, dict) and entry_exit:
             section = "💡 進出場建議" if mode_label == "盤前" else "🌅 明日展望"
             parts.append(section)
+            suitable = entry_exit.get("suitable_today")
             ep = entry_exit.get("entry_price")
-            if ep is not None:
+            if ep is not None and suitable is not False:
                 if isinstance(ep, dict):
                     # Claude 回傳多情境價位時，取 moderate 或第一個值
                     ep_val = ep.get("moderate") or ep.get("primary") or ep.get("conservative") or next(iter(ep.values()), None)

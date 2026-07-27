@@ -12,6 +12,9 @@ from linebot.v3.messaging import (
 )
 
 
+_LINE_DISABLED = os.environ.get("LINE_PUSH_DISABLED", "1") == "1"
+
+
 class LineClient:
     def __init__(self):
         token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
@@ -20,6 +23,9 @@ class LineClient:
 
     def push(self, user_id: str, text: str) -> None:
         """主動推播訊息給使用者（不需 reply_token）"""
+        if _LINE_DISABLED:
+            print(f"[LINE] push 已停用，略過 uid={user_id[:8]}...")
+            return
         try:
             self._api.push_message(PushMessageRequest(
                 to=user_id,
@@ -30,6 +36,8 @@ class LineClient:
 
     def reply(self, reply_token: str, text: str) -> None:
         """回覆使用者訊息（需 reply_token，僅在 30 秒內有效）"""
+        if _LINE_DISABLED:
+            return
         try:
             self._api.reply_message(ReplyMessageRequest(
                 reply_token=reply_token,

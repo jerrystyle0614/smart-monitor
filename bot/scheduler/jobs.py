@@ -93,6 +93,10 @@ class ScheduledJobs:
         每日大盤走勢推播（08:50）
         抓取美股昨收資料，Claude 分析後推播給所有有效使用者。
         """
+        if datetime.now().weekday() >= 5:  # 週六、日不推播
+            logger.info("[market_trend] 週末，跳過推播")
+            return
+
         try:
             market_data = fetch_market_data()
             if not market_data:
