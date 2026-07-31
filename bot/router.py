@@ -520,7 +520,8 @@ def _run_risk_analysis(uid, draft, line):
             f"  - 最大回撤停損：適合ETF、景氣循環股\n"
             f"  - 百分比停損：適合中小型成長股、投機股\n"
             f"  - 時間停損：適合題材股（可與其他方式並用）\n\n"
-            f"步驟三：依選定方式計算今日建議停損價和停利目標。\n\n"
+            f"步驟三：依選定方式計算今日建議停損價和停利目標。\n"
+            f"【重要限制】停損價必須嚴格低於均價 {cost_price} 元，停損是保護本金用的，不能高於買入成本。\n\n"
             f"回覆格式為 JSON，不要有其他文字：\n"
             f'{{"stock_type": "股票類型",'
             f'"stop_loss_method": "停損方式名稱",'
@@ -551,7 +552,10 @@ def _run_risk_analysis(uid, draft, line):
 
         stock_type = ai_data.get("stock_type", "")
         stop_loss_method = ai_data.get("stop_loss_method", "")
-        stop_loss_price = float(ai_data.get("stop_loss_price", round(close * 0.95, 1)))
+        stop_loss_price = float(ai_data.get("stop_loss_price", 0))
+        # 停損必須低於均價，否則視為無效不顯示
+        if cost_price > 0 and stop_loss_price >= cost_price:
+            stop_loss_price = 0
         stop_loss_reason = ai_data.get("stop_loss_reason", "AI 建議停損點")
         tp1_price = float(ai_data.get("tp1_price", round(high20, 1)))
         tp1_reason = ai_data.get("tp1_reason", "第一停利目標")
@@ -560,16 +564,10 @@ def _run_risk_analysis(uid, draft, line):
         risk_level = ai_data.get("risk_level", "中")
         summary = ai_data.get("summary", raw)
 
-        # 根據 AI 停損/停利計算損益金額
-        loss_at_stop = shares * (close - stop_loss_price)
-        loss_pct_at_stop = (close - stop_loss_price) / close * 100
         gain_at_tp1 = shares * (tp1_price - close)
         gain_pct_tp1 = (tp1_price - close) / close * 100
         gain_at_tp2 = shares * (tp2_price - close)
         gain_pct_tp2 = (tp2_price - close) / close * 100
-        risk_amt = abs(loss_at_stop)
-        reward_amt = abs(gain_at_tp1)
-        rr_ratio = round(reward_amt / risk_amt, 1) if risk_amt > 0 else 0
 
         pnl_sign = "+" if unrealized_pnl >= 0 else ""
         msg = (
@@ -578,10 +576,25 @@ def _run_risk_analysis(uid, draft, line):
             f"成本：{capital:,.0f} 元｜市值：{current_value:,.0f} 元\n"
             f"損益：{pnl_sign}{unrealized_pnl:,.0f} 元（{pnl_sign}{unrealized_pct:.2f}%）\n\n"
             f"📌 股票類型：{stock_type}\n"
-            f"📐 停損方式：{stop_loss_method}\n\n"
-            f"🛡️ 停損：{stop_loss_price} 元\n"
-            f"   理由：{stop_loss_reason}\n"
-            f"   若觸及：損失約 {loss_at_stop:,.0f} 元（{loss_pct_at_stop:.1f}%）\n\n"
+        )
+
+        if stop_loss_price > 0:
+            loss_at_stop = shares * (close - stop_loss_price)
+            loss_pct_at_stop = (close - stop_loss_price) / close * 100
+            risk_amt = abs(loss_at_stop)
+            reward_amt = abs(gain_at_tp1)
+            rr_ratio = round(reward_amt / risk_amt, 1) if risk_amt > 0 else 0
+            msg += (
+                f"📐 停損方式：{stop_loss_method}\n\n"
+                f"🛡️ 停損：{stop_loss_price} 元\n"
+                f"   理由：{stop_loss_reason}\n"
+                f"   若觸及：損失約 {loss_at_stop:,.0f} 元（{loss_pct_at_stop:.1f}%）\n\n"
+            )
+        else:
+            rr_ratio = 0
+            msg += "🛡️ 停損：無法提供建議（請依技術面自行判斷）\n\n"
+
+        msg += (
             f"🎯 停利目標：\n"
             f"   第一目標：{tp1_price} 元\n"
             f"   理由：{tp1_reason}\n"

@@ -65,15 +65,19 @@ class PostMarketService(ScriptedService):
             candle_data = self._fetch_candle_data(stock_id)
 
             if candle_data:
-                # 從 K 線資料中提取今日收盤價（最後一筆），yfinance 失敗則用 Fugle
+                # 13:30 前（盤中）用 Fugle 即時報價；13:30 後（收盤）用 yfinance 最後一筆
+                import datetime as _dt
+                _now = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).time()
+                _market_closed = _now >= _dt.time(13, 30)
                 current_price = 0.0
-                try:
-                    from bot.services.prescan import _fetch_candles_yf
-                    df = _fetch_candles_yf(stock_id, days=20)
-                    if df is not None and len(df) > 0:
-                        current_price = float(df.iloc[-1]["close"])
-                except Exception:
-                    pass
+                if _market_closed:
+                    try:
+                        from bot.services.prescan import _fetch_candles_yf
+                        df = _fetch_candles_yf(stock_id, days=20)
+                        if df is not None and len(df) > 0:
+                            current_price = float(df.iloc[-1]["close"])
+                    except Exception:
+                        pass
                 if current_price == 0.0:
                     try:
                         from bot.data.fugle_client import FugleClient
@@ -233,7 +237,7 @@ class PostMarketService(ScriptedService):
                     msg_parts.append(f"- 風險等級：{risk_level}")
                 if suitable is not None:
                     msg_parts.append(
-                        f"- 明日適合操作：{'✅ 是' if suitable else '❌ 否'}"
+                        f"- 適合操作：{'✅ 是' if suitable else '❌ 否'}"
                     )
             msg_parts.append("")
 
