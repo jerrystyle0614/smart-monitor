@@ -399,6 +399,12 @@ class MonitorEngine:
             ob = technical.get("open_bias")
             if ob:
                 parts.append(f"- 開盤預判：{ob}")
+            high20 = technical.get("high20")
+            low20 = technical.get("low20")
+            if high20 is not None:
+                parts.append(f"- 近20日最高收盤：{high20}")
+            if low20 is not None:
+                parts.append(f"- 近20日最低收盤：{low20}")
             sm = technical.get("summary")
             if sm:
                 parts.append(f"- 總結：{sm}")

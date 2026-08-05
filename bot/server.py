@@ -37,6 +37,17 @@ async def lifespan(app: FastAPI):
     global _engine
 
     try:
+        import shutil
+        from pathlib import Path
+        cache_dir = Path("cache/analysis")
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+            cache_dir.mkdir(parents=True)
+            logger.info("[startup] Analysis cache cleared")
+    except Exception as e:
+        logger.warning("[startup] Cache clear failed: {}".format(e))
+
+    try:
         FugleClient().load_stock_map()
         logger.info("[startup] Stock map loaded")
     except Exception as e:

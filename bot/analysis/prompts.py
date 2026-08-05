@@ -9,6 +9,10 @@ TECHNICAL_ANALYSIS_PROMPT = """
 最近 20 日 K 線資料：
 {candle_data}
 
+【重要】
+- high20、low20 必須直接從上方 K 線資料的收盤價欄位計算最大值與最小值，禁止自行估算。
+- summary 中提到高點或低點時，必須使用 high20 與 low20 的數值，不可使用其他數字。
+
 三大法人近 5 日資料：
 {institutional_data}
 
@@ -35,11 +39,13 @@ TECHNICAL_ANALYSIS_PROMPT = """
   "trend": "上升/下降/盤整",
   "support": 123.45,
   "resistance": 125.50,
+  "high20": 125.50,
+  "low20": 110.00,
   "pattern": "形態名稱",
   "volume_signal": "訊號評估",
   "institutional_signal": "買超/賣超/中性",
   "consecutive_buy_days": 0,
-  "summary": "白話總結"
+  "summary": "白話總結（高低點必須使用 high20/low20 數值）"
 }}
 """
 
@@ -51,6 +57,10 @@ TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT = """
 
 最近 20 日 K 線資料：
 {candle_data}
+
+【重要】
+- high20、low20 必須直接從上方 K 線資料的收盤價欄位計算最大值與最小值，禁止自行估算。
+- summary 中提到高點或低點時，必須使用 high20 與 low20 的數值，不可使用其他數字。
 
 三大法人近 5 日資料：
 {institutional_data}
@@ -83,13 +93,15 @@ TECHNICAL_ANALYSIS_PRE_MARKET_PROMPT = """
   "trend": "上升/下降/盤整",
   "support": 123.45,
   "resistance": 125.50,
+  "high20": 125.50,
+  "low20": 110.00,
   "pattern": "形態名稱",
   "volume_signal": "訊號評估",
   "institutional_signal": "買超/賣超/中性",
   "consecutive_buy_days": 0,
   "market_impact": "市場背景影響說明",
   "open_bias": "偏多/偏空/中性",
-  "summary": "白話總結（含市場背景影響）"
+  "summary": "白話總結（含市場背景影響，高低點必須使用 high20/low20 數值）"
 }}
 """
 
